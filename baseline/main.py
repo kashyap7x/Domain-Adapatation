@@ -34,6 +34,15 @@ def my_lr_scheduler(optimizer, preval, curval, prelr, init_lr=0.001):
 
     return optimizer, lr
 
+def inv_lr_scheduler(optimizer, gamma, power, iter, init_lr=0.001):
+    """Decay learning rate by a factor of 0.1 when current train_loss + val_loss < previous train_loss + val_loss"""
+    lr = init_lr * (1 + gamma * iter) ** (- power)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+
+
+    return optimizer, lr
 
 
 if __name__ == '__main__':
@@ -61,11 +70,15 @@ if __name__ == '__main__':
     phases = ['amazon', 'dslr', 'webcam']
     #phases = ['dslr', 'amazon', 'webcam']
     #phases = ['webcam', 'amazon', 'dslr']
-    batch_size = 8
-    init_lr = 0.001
-    weight_decay = 0.001
+    batch_size = 16
+    init_lr = 0.0003
+    #weight_decay = 0.0001
+    weight_decay = 0.0005
     gpu_id = 0
     num_epochs = 40
+    gamma = 0.001
+    power = 0.75
+    maxIter = 30000
 
     data_transform = {x: transforms.Compose([
             transforms.Scale([224, 224]),
@@ -84,7 +97,7 @@ if __name__ == '__main__':
 
     model = office_model.office_model()
 
-    optimizer = optim.Adam(model.parameters(), lr=init_lr, weight_decay=weight_decay)
-    model_best = model.train_model(model, dset_loaders, dset_sizes, optimizer, my_lr_scheduler, init_lr, phases, batch_size=batch_size,
-                num_epochs=num_epochs, gpu_id=gpu_id, save_best='Training')
+    optimizer = optim.SGD(model.parameters(), lr=init_lr, weight_decay=weight_decay)
+    model_best = model.train_model_SGD(model, dset_loaders, dset_sizes, optimizer, inv_lr_scheduler, init_lr, phases, gamma, power, batch_size=batch_size,
+            gpu_id=gpu_id, save_best='Training', maxIter=maxIter, testInterv=500)
 
