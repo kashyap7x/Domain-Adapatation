@@ -1,26 +1,17 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.autograd import Variable
-import numpy as np
-import torchvision
 import os
-from torchvision import datasets, models, transforms
-import torch.nn.functional as F
-from skimage import io, transform
-import matplotlib.pyplot as plt
-from torchvision.transforms import ToPILImage
-from PIL import Image
-import time
-import copy
-import sys
-import math
-from tqdm import tqdm
+import torch
+import torch.optim as optim
+from torchvision import transforms
 from torchvision.datasets import ImageFolder
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 import office_model
 
+
 def my_lr_scheduler(optimizer, preval, curval, prelr, init_lr=0.001):
-    """Decay learning rate by a factor of 0.1 when current train_loss + val_loss < previous train_loss + val_loss"""
+    """
+    Decay learning rate by a factor of 0.1 when current train_loss + val_loss < previous train_loss + val_loss
+    """
     if prelr > 1:
         lr = init_lr
         print('LR is set to {}'.format(lr))
@@ -34,13 +25,14 @@ def my_lr_scheduler(optimizer, preval, curval, prelr, init_lr=0.001):
 
     return optimizer, lr
 
+
 def inv_lr_scheduler(optimizer, gamma, power, iter, init_lr=0.001):
-    """Decay learning rate by a factor of 0.1 when current train_loss + val_loss < previous train_loss + val_loss"""
+    """
+    Inverse exponential LR decay every iteration (based on caffe implementation)
+    """
     lr = init_lr * (1 + gamma * iter) ** (- power)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
-
 
     return optimizer, lr
 
@@ -64,7 +56,7 @@ if __name__ == '__main__':
         ])
     }
 
-    datasetRoot = 'D:/dataset/office/domain_adaptation_images/'
+    datasetRoot = 'C:/torch/data/Office31/'
     datasetNames = ['amazon', 'dslr', 'webcam']
 
     phases = ['amazon', 'dslr', 'webcam']
@@ -72,10 +64,9 @@ if __name__ == '__main__':
     #phases = ['webcam', 'amazon', 'dslr']
     batch_size = 16
     init_lr = 0.0003
-    #weight_decay = 0.0001
     weight_decay = 0.0005
+    momentum = 0.9
     gpu_id = 0
-    num_epochs = 40
     gamma = 0.001
     power = 0.75
     maxIter = 30000
@@ -96,8 +87,12 @@ if __name__ == '__main__':
     dset_sizes = {x: len(dsets[x]) for x in datasetNames}
 
     model = office_model.office_model()
+    model.cuda()
+    synth = office_model.syn_net()
+    synth.cuda()
 
-    optimizer = optim.SGD(model.parameters(), lr=init_lr, weight_decay=weight_decay)
-    model_best = model.train_model_SGD(model, dset_loaders, dset_sizes, optimizer, inv_lr_scheduler, init_lr, phases, gamma, power, batch_size=batch_size,
-            gpu_id=gpu_id, save_best='Training', maxIter=maxIter, testInterv=500)
+    model_optimizer = optim.SGD(model.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+    synth_optimizer = optim.SGD(synth.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+
+    model_best = office_model.train_model(model, synth, model_optimizer, synth_optimizer, dset_sizes, dset_loaders, inv_lr_scheduler, init_lr, phases, gamma, power, gpu_id=gpu_id, save_best='Training', maxIter=maxIter)
 
