@@ -38,32 +38,18 @@ def inv_lr_scheduler(optimizer, gamma, power, iter, init_lr=0.001):
 
 
 if __name__ == '__main__':
-    data_transform = {
-        'Training': transforms.Compose([
-            transforms.Scale([224, 224]),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.485, 0.485], [0.229, 0.229, 0.229])
-        ]),
-        'Validate': transforms.Compose([
-            transforms.Scale([224, 224]),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.485, 0.485], [0.229, 0.229, 0.229])
-        ]),
-        'Testing': transforms.Compose([
-            transforms.Scale([224, 224]),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.485, 0.485], [0.229, 0.229, 0.229])
-        ])
-    }
-
     datasetRoot = 'C:/torch/data/Office31/'
     datasetNames = ['amazon', 'dslr', 'webcam']
 
+    # Define train, validation1 and validation2 phases
     phases = ['amazon', 'dslr', 'webcam']
-    #phases = ['dslr', 'amazon', 'webcam']
-    #phases = ['webcam', 'amazon', 'dslr']
+    # phases = ['dslr', 'amazon', 'webcam']
+    # phases = ['webcam', 'amazon', 'dslr']
+
+    # Training hyper-parameters
     batch_size = 16
     init_lr = 0.0003
+    synth_lr = 0.01
     weight_decay = 0.0005
     momentum = 0.9
     gpu_id = 0
@@ -71,28 +57,27 @@ if __name__ == '__main__':
     power = 0.75
     maxIter = 30000
 
+    # Data handling
+    # Rescale and normalize with mean/std
     data_transform = {x: transforms.Compose([
             transforms.Scale([224, 224]),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.485, 0.485], [0.229, 0.229, 0.229])
         ]) for x in datasetNames}
-
     dsets = {
         x: ImageFolder(os.path.join(os.path.join(datasetRoot, x), 'images'),
                                      data_transform[x])
         for x in datasetNames}
+    # Loaders
     dset_loaders = {x: torch.utils.data.DataLoader(dsets[x], batch_size=batch_size,
                                                    shuffle=True, num_workers=4)
                     for x in datasetNames}
     dset_sizes = {x: len(dsets[x]) for x in datasetNames}
 
-    model = office_model.office_model()
-    model.cuda()
-    synth = office_model.syn_net()
-    synth.cuda()
+    # Initialize model and trainer
+    model = office_model.office_model(init_lr, synth_lr, momentum, weight_decay)
+    trainer = office_model.synthetic_trainer(model, phases)
 
-    model_optimizer = optim.SGD(model.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
-    synth_optimizer = optim.SGD(synth.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
-
-    model_best = office_model.train_model(model, synth, model_optimizer, synth_optimizer, dset_sizes, dset_loaders, inv_lr_scheduler, init_lr, phases, gamma, power, gpu_id=gpu_id, save_best='Training', maxIter=maxIter)
+    # Train
+    model_best = trainer.train_model(False, dset_sizes, dset_loaders, inv_lr_scheduler, init_lr, gamma, power, gpu_id=gpu_id, save_best='Training', maxIter=maxIter)
 

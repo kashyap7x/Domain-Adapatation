@@ -1,9 +1,9 @@
 # Domain Adaptation
 
 - ResNet-50 baselines for [Office31](https://people.eecs.berkeley.edu/~jhoffman/domainadapt/)
-- Synthetic gradient training added
+- Synthetic gradient module training added
+- Trainer for synthetic gradient based updates added
 
 ## TODO
 
-- Synthetic gradient based updates
 - Logging and plots
