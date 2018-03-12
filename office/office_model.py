@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torchvision import models
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import utils
 seed = 1337
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -17,7 +18,7 @@ class syn_net(nn.Module):
     """
     Synthetic gradient module. Currently a small network with 2 hidden layers of size hidden_size.
     """
-    def __init__(self, input_dims=31, hidden_size=256):
+    def __init__(self, input_dims=31, hidden_size=64):
         super(syn_net, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Linear(input_dims, hidden_size),
@@ -25,17 +26,19 @@ class syn_net(nn.Module):
             nn.ReLU()
         )
         self.layer2 = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(input_dims, hidden_size),
             nn.BatchNorm1d(hidden_size),
             nn.ReLU()
         )
 
-        self.layer3 = nn.Linear(hidden_size, input_dims)
+        self.layer3 = nn.Linear(hidden_size*2, input_dims)
 
-    def forward(self, x):
+    def forward(self, x, w):
         x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
+        w = w.unsqueeze(0).repeat(x.size(0), 1, 1)
+        w = torch.mean(w, 2)
+        w = self.layer2(w)
+        x = self.layer3(torch.cat((x,w),1))
         return x
 
 
@@ -103,9 +106,10 @@ class office_model(nn.Module):
 
         # Predictions
         x = self.fc(x)
+        w = self.fc.weight
 
         # Estimated gradients
-        grad_fc = self._fc(x)
+        grad_fc = self._fc(x, w)
         return x, grad_fc
 
 
@@ -199,10 +203,11 @@ class synthetic_trainer():
             return loss, preds
 
 
-    def train_model(self, with_synthetic_grads, dset_sizes,dset_loaders, lr_scheduler, init_lr, gamma, power, maxIter=10000, maxEpoch=None, gpu_id=-1, save_best = 'Training'):
+    def train_model(self, ratios, batch_size, dset_sizes,dset_loaders, lr_scheduler, init_lr, gamma, power, maxIter=10000, maxEpoch=None, gpu_id=-1, save_best = 'Training'):
         """
         Main training loop
-        :param with_synthetic_grads: train with backprop if False
+        :param ratios: sampling ratio for the source (real grads) and target (synthetic grads) domains
+        :param batch_size: batch size for training
         :param dset_sizes: number of images in the datasets
         :param dset_loaders: mini-batch loaders
         :param lr_scheduler: learning rate decay function
@@ -231,12 +236,12 @@ class synthetic_trainer():
         preval = 1e5
         curval = 1e4
 
-        # Overwrite default iterations of epochs given as input
+        # Overwrite default iterations if epochs given as input
         if maxEpoch:
             maxIter = dset_sizes[0] * maxEpoch
 
         epoch = 0
-        iter = 0
+        iteration = 0
         while True:
             # Each epoch has a training and one or more validation phases
             print('Epoch {}'.format(epoch))
@@ -244,7 +249,7 @@ class synthetic_trainer():
             for phase in self.phases:
                 if phase == self.phases[0]:
                     # For caffe scheduler
-                    self.model.model_optimizer, prelr = lr_scheduler(self.model.model_optimizer, gamma, power, iter, init_lr=init_lr)
+                    self.model.model_optimizer, prelr = lr_scheduler(self.model.model_optimizer, gamma, power, iteration, init_lr=init_lr)
 
                     # For custom step scheduler
                     #model_optimizer, prelr = lr_scheduler(model_optimizer, preval, curval, prelr, init_lr=init_lr)
@@ -264,9 +269,14 @@ class synthetic_trainer():
 
                 # Iterate over data.
                 # tqdm is a progress bar wrapper
-                for data in tqdm(dset_loaders[phase]):
+                for i in tqdm(range(dset_sizes[phase]//batch_size + 1), ncols=100):
                     # Get the inputs
-                    inputs, target = data
+                    if phase == self.phases[0]:
+                        sample, key = utils.random_sampler(ratios, dset_loaders)
+                        inputs, target = sample
+                    else:
+                        key = phase
+                        inputs, target = iter(dset_loaders[key]).next()
                     # Wrap them in Variable
                     if gpu_id >= 0:
                         inputs, target = Variable(inputs.cuda(gpu_id)), Variable(target.cuda(gpu_id))
@@ -277,12 +287,12 @@ class synthetic_trainer():
                         # Check for batch size 1 (causes errors with batch normalization)
                         if(len(target.data) != 1):
                             # Optimize the main model
-                            self.optimize_model(with_synthetic_grads, inputs, target, self.model.model_optimizer, self.model.forward)
+                            self.optimize_model(key!=phase, inputs, target, self.model.model_optimizer, self.model.forward)
 
                             # Optimize the synthetic module and collect statistics
                             loss, syn_loss, preds = self.optimize_synth(phase, inputs, target, self.model.model_optimizer,self.model.synth_optimizer, self.model)
-                        iter += 1
-                        if iter >= maxIter:
+                        iteration += 1
+                        if iteration >= maxIter:
                             break
                     else:
                         # Collect statistics
