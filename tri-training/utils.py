@@ -28,7 +28,7 @@ def inv_lr_scheduler(optimizer, gamma, power, iter, init_lr=0.001):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-    return optimizer, lr
+    return optimizer
 
 
 def random_sampler(ratios, dset_loaders):

@@ -274,11 +274,6 @@ class synthetic_trainer():
         best_model = self.model
         best_val_loss = 1e6
 
-        # For custom step scheduler
-        prelr = 1e5
-        preval = 1e5
-        curval = 1e4
-
         # Overwrite default iterations if epochs given as input
         if maxEpoch:
             maxIter = dset_sizes[0] * maxEpoch
@@ -292,12 +287,12 @@ class synthetic_trainer():
             for phase in self.phases:
                 if phase == self.phases[0]:
                     # For caffe scheduler
-                    self.model.optimizer_F, prelr = lr_scheduler(self.model.optimizer_F, gamma, power, iteration, init_lr=init_lr)
-                    self.model.optimizer_F1, prelr = lr_scheduler(self.model.optimizer_F1, gamma, power, iteration,
+                    self.model.optimizer_F = lr_scheduler(self.model.optimizer_F, gamma, power, iteration, init_lr=init_lr)
+                    self.model.optimizer_F1 = lr_scheduler(self.model.optimizer_F1, gamma, power, iteration,
                                                                  init_lr=init_lr)
-                    self.model.optimizer_F2, prelr = lr_scheduler(self.model.optimizer_F2, gamma, power, iteration,
+                    self.model.optimizer_F2 = lr_scheduler(self.model.optimizer_F2, gamma, power, iteration,
                                                                  init_lr=init_lr)
-                    self.model.optimizer_Ft, prelr = lr_scheduler(self.model.optimizer_Ft, gamma, power, iteration,
+                    self.model.optimizer_Ft = lr_scheduler(self.model.optimizer_Ft, gamma, power, iteration,
                                                                  init_lr=init_lr)
 
                     # Set model to training mode
@@ -317,37 +312,51 @@ class synthetic_trainer():
                 running_corrects_syn = 0
                 running_loss_similarity = 0.
 
-                # Iterate over data.
-                # tqdm is a progress bar wrapper
-                for i in tqdm(range(dset_sizes[phase]//batch_size), ncols=100):
-                    # Get the inputs
-                    if phase == self.phases[0]:
+                if phase == self.phases[0]:
+                    for i in tqdm(range(dset_sizes[phase]//batch_size), ncols=100):
+                        # Get the inputs
                         sample, key = utils.random_sampler(ratios, dset_loaders)
                         inputs, target = sample
-                    else:
-                        key = phase
-                        inputs, target = iter(dset_loaders[key]).next()
-                    # Wrap them in Variable
-                    if gpu_id >= 0:
-                        inputs, target = Variable(inputs.cuda(gpu_id)), Variable(target.cuda(gpu_id))
-                    else:
-                        inputs, target = Variable(inputs), Variable(target)
 
-                    if phase == self.phases[0]:
+                        # Wrap them in Variable
+                        if gpu_id >= 0:
+                            inputs, target = Variable(inputs.cuda(gpu_id)), Variable(target.cuda(gpu_id))
+                        else:
+                            inputs, target = Variable(inputs), Variable(target)
+
                         # Check for batch size 1 (causes errors with batch normalization)
                         if(len(target.data) != 1):
                             # Optimize the main model
                             loss_F1, loss_F2, loss_Ft, loss_syn, loss_similiarity, preds_1, preds_2, preds_t, preds_g = \
                                 self.optimize_model(key!=phase, inputs, target)
                         iteration += 1
-                    else:
+
+                        # Statistics
+                        # Do not take train statistics if batch size was 1
+                        if (len(target.data) != 1):
+                            running_loss_F1 += loss_F1.data[0] * inputs.size(0)
+                            running_loss_F2 += loss_F2.data[0] * inputs.size(0)
+                            running_loss_Ft += loss_Ft.data[0] * inputs.size(0)
+                            running_loss_syn += loss_syn.data[0] * inputs.size(0)
+                            running_loss_similarity += loss_similiarity.data[0] * inputs.size(0)
+                            running_corrects_F1 += torch.sum(preds_1 == target.data)
+                            running_corrects_F2 += torch.sum(preds_2 == target.data)
+                            running_corrects_Ft += torch.sum(preds_t == target.data)
+                            running_corrects_syn += torch.sum(preds_g == target.data)
+                else:
+                    for inputs, target in tqdm(dset_loaders[phase], ncols=100):
+                        # Get the inputs
+                        # Wrap them in Variable
+                        if gpu_id >= 0:
+                            inputs, target = Variable(inputs.cuda(gpu_id)), Variable(target.cuda(gpu_id))
+                        else:
+                            inputs, target = Variable(inputs), Variable(target)
+
                         # Collect statistics
                         loss_F1, loss_F2, loss_Ft, loss_syn, loss_similiarity, preds_1, preds_2, preds_t, preds_g = \
                             self.collect_stats(inputs, target)
 
-                    # Statistics
-                    # Do not take train statistics if batch size was 1
-                    if (len(target.data) != 1) or phase != self.phases[0]:
+                        # Statistics
                         running_loss_F1 += loss_F1.data[0] * inputs.size(0)
                         running_loss_F2 += loss_F2.data[0] * inputs.size(0)
                         running_loss_Ft += loss_Ft.data[0] * inputs.size(0)
