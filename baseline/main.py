@@ -16,12 +16,12 @@ def inv_lr_scheduler(optimizer, gamma, power, iter, init_lr=0.001):
 
 if __name__ == '__main__':
 
-    datasetRoot = 'C:/torch/data/Office31/'
+    datasetRoot = '/home/selfdriving/datasets/office/domain_adaptation_images/'
     datasetNames = ['amazon', 'dslr', 'webcam']
 
-    phases = ['amazon', 'dslr', 'webcam']
-    #phases = ['dslr', 'amazon', 'webcam']
-    #phases = ['webcam', 'amazon', 'dslr']
+    # phases = ['amazon', 'dslr', 'webcam']
+    phases = ['dslr', 'amazon', 'webcam']
+    # phases = ['webcam', 'amazon', 'dslr']
     batch_size = 16
     init_lr = 0.0003
     weight_decay = 0.0005
@@ -52,5 +52,5 @@ if __name__ == '__main__':
 
     model_best = model.train_model(model, dset_loaders, dset_sizes, optimizer, inv_lr_scheduler, init_lr, phases, gamma, power, gpu_id=gpu_id, maxIter=maxIter)
 
-    model_best.save_state_dict(phases[0] + '.pt')
+    torch.save(model_best.resnet, (phases[0] + '.pt'))
 

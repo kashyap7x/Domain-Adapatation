@@ -18,7 +18,7 @@ class branch_net(nn.Module):
     """
     Classifier branch module. Currently a small network with 1 hidden layer of size hidden_size.
     """
-    def __init__(self, input_dims=512, hidden_size=64, output_dims=31):
+    def __init__(self, input_dims=2048, hidden_size=64, output_dims=31):
         super(branch_net, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Linear(input_dims, hidden_size),
@@ -106,12 +106,12 @@ class office_model(nn.Module):
         super(office_model, self).__init__()
 
         # Shared layers
-        self.F = models.resnet18(True)
+        self.F = models.resnet50(True)
 
         # Branches
-        self.F1 = branch_net(512, 64, 31)
-        self.F2 = branch_net(512, 64, 31)
-        self.Ft = branch_net(512, 64, 31)
+        self.F1 = branch_net(2048, 64, 31)
+        self.F2 = branch_net(2048, 64, 31)
+        self.Ft = branch_net(2048, 64, 31)
 
         # Synthetic annotation generator
         self.S = syn_net()
@@ -319,7 +319,7 @@ class synthetic_trainer():
 
                 # Iterate over data.
                 # tqdm is a progress bar wrapper
-                for i in tqdm(range(dset_sizes[phase]//batch_size + 1), ncols=100):
+                for i in tqdm(range(dset_sizes[phase]//batch_size), ncols=100):
                     # Get the inputs
                     if phase == self.phases[0]:
                         sample, key = utils.random_sampler(ratios, dset_loaders)
@@ -340,8 +340,6 @@ class synthetic_trainer():
                             loss_F1, loss_F2, loss_Ft, loss_syn, loss_similiarity, preds_1, preds_2, preds_t, preds_g = \
                                 self.optimize_model(key!=phase, inputs, target)
                         iteration += 1
-                        if iteration >= maxIter:
-                            break
                     else:
                         # Collect statistics
                         loss_F1, loss_F2, loss_Ft, loss_syn, loss_similiarity, preds_1, preds_2, preds_t, preds_g = \
@@ -386,4 +384,8 @@ class synthetic_trainer():
                         best_val_loss = epoch_loss_syn
                         best_model = copy.deepcopy(self.model)
             epoch += 1
+            
+            if iteration >= maxIter:
+                break
+                        
         return best_model

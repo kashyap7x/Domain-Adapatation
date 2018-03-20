@@ -292,8 +292,6 @@ class synthetic_trainer():
                             # Optimize the synthetic module and collect statistics
                             loss, syn_loss, preds = self.optimize_synth(phase, inputs, target, self.model.model_optimizer,self.model.synth_optimizer, self.model)
                         iteration += 1
-                        if iteration >= maxIter:
-                            break
                     else:
                         # Collect statistics
                         loss, preds = self.optimize_synth(phase, inputs, target, self.model.model_optimizer,self.model.synth_optimizer, self.model)
@@ -329,5 +327,8 @@ class synthetic_trainer():
                         best_val_loss = epoch_loss
                         best_model = copy.deepcopy(self.model)
             epoch += 1
+            
+            if iteration >= maxIter:
+                break
 
         return best_model

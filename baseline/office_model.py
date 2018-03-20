@@ -102,8 +102,6 @@ class office_model(nn.Module):
                         loss.backward()
                         optimizer.step()
                         iter += 1
-                        if iter >= maxIter:
-                            break
 
                     # statistics
                     running_loss += loss.data[0] * inputs.size(0)
@@ -124,4 +122,8 @@ class office_model(nn.Module):
                         best_val_loss = epoch_loss
                         best_model = copy.deepcopy(model)
             epoch += 1
+            
+            if iter >= maxIter:
+                break
+            
         return best_model

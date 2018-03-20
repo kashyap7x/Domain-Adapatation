@@ -4,18 +4,18 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
 # Data location
-datasetRoot = 'C:/torch/data/Office31/'
+datasetRoot = '/home/selfdriving/datasets/office/domain_adaptation_images/'
 
 # Names
 datasetNames = ['amazon', 'dslr', 'webcam']
 
 # Define train and validation phases
-phases = ['dslr', 'webcam']
+phases = ['amazon', 'dslr']
 
 gpu_id = 0
 
 # Training hyper-parameters
-ratios = {phases[0]: 0.5, phases[1]: 0.5}
+ratios = {phases[0]: 0.8, phases[1]: 0.2}
 batch_size = 16
 init_lr = 0.0003
 synth_lr = 0.01
