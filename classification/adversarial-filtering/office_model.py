@@ -19,7 +19,7 @@ class branch_net(nn.Module):
     """
     Classifier branch module. Currently a small network with 1 hidden layer of size hidden_size.
     """
-    def __init__(self, input_dims=2048, hidden_size=64, output_dims=31, loss_weights=None):
+    def __init__(self, input_dims=2048, hidden_size=64, output_dims=31):
         super(branch_net, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Linear(input_dims, hidden_size),
@@ -38,63 +38,32 @@ class branch_net(nn.Module):
         return self.layer2.weight
 
 
-class syn_net(nn.Module):
-    """
-    Synthetic annotation module. Currently a network with 6 layers (one from each input, and a classifier) of size hidden_size.
-    """
-    def __init__(self, input_dims=2048, hidden_size=64, output_dims=31):
-        super(syn_net, self).__init__()
-        self.layer1 = nn.Sequential(
-            nn.Linear(input_dims, hidden_size),
-            nn.BatchNorm1d(hidden_size),
-            nn.ReLU()
-        )
-        self.layer2 = nn.Sequential(
-            nn.Linear(output_dims, hidden_size),
-            nn.BatchNorm1d(hidden_size),
-            nn.ReLU()
-        )
-        self.layer3 = nn.Sequential(
-            nn.Linear(output_dims, hidden_size),
-            nn.BatchNorm1d(hidden_size),
-            nn.ReLU()
-        )
-        self.layer4 = nn.Linear(hidden_size*3+2, output_dims)
-
-    def forward(self, x, x1, w1, d):
-        x = self.layer1(x)
-
-        x1 = self.layer2(x1)
-        w1 = w1.unsqueeze(0).repeat(x1.size(0), 1, 1)
-        w1 = torch.mean(w1, 2)
-        w1 = self.layer3(w1)
-
-        g = self.layer4(torch.cat((x,x1,w1,d),1))
-        return nn.functional.log_softmax(g)
-
-
 class office_model(nn.Module):
     """
     Main classification model. ResNet backbone
     """
-    def __init__(self, init_lr, synth_lr, momentum, weight_decay):
+    def __init__(self, init_lr, momentum, weight_decay):
         super(office_model, self).__init__()
 
         # Shared layers
         self.F = models.resnet50(True)
 
         # Branches
-        self.F1 = branch_net(2048, 64, 31)
+        self.F_src = branch_net(2048, 64, 31)
+        self.F_tar = branch_net(2048, 64, 31)
         self.D = branch_net(2048, 64, 2)
 
         # Synthetic annotation generator
-        self.S = syn_net(2048, 64, 31)
+        self.S = branch_net(64, 64, 31)
 
         # Optimizers for all networks
         self.optimizer_F = optim.SGD(self.F.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
-        self.optimizer_F1 = optim.SGD(self.F1.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+        self.optimizer_F_src = optim.SGD(self.F_src.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+        self.optimizer_F_tar = optim.SGD(self.F_tar.parameters(), lr=init_lr, momentum=momentum,
+                                         weight_decay=weight_decay)
         self.optimizer_D = optim.SGD(self.D.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
-        self.optimizer_S = optim.Adam(self.S.parameters(), lr=synth_lr)
+        self.optimizer_S = optim.SGD(self.S.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+        #self.optimizer_S = optim.Adam(self.S.parameters(), lr=synth_lr)
 
     def forward_F(self, x):
         x = self.F.conv1(x)
@@ -115,15 +84,17 @@ class office_model(nn.Module):
         # Forward through shared layers
         x = self.forward_F(x)
 
-        # Predictions and weights of branches
-        y1 = self.F1(x)
-        w1 = self.F1.get_weights()
+        # Predictions of branches
+        x_src = self.F_src(x)
+        x_tar = self.F_tar(x)
 
+        # Domain classifier
         xrev = utils.ReverseLayerF.apply(x, alpha)
         d = self.D(xrev)
 
-        g = self.S(x, y1, w1, d)
-        return (y1, d), g
+        # Synthetic module
+        g = self.S(torch.cat((x_src, x_tar, d), 1))
+        return x_src, x_tar, d, g
 
 
 class synthetic_trainer():
@@ -156,13 +127,15 @@ class synthetic_trainer():
 
         # Zero the parameter gradients
         self.model.optimizer_F.zero_grad()
-        self.model.optimizer_F1.zero_grad()
+        self.model.optimizer_F_src.zero_grad()
+        self.model.optimizer_F_tar.zero_grad()
         self.model.optimizer_D.zero_grad()
         self.model.optimizer_S.zero_grad()
 
         # Forward classification model
-        (y1, d), g = self.model.forward(inputs, alpha)
-        _, preds_1 = torch.max(y1.data, 1)
+        x_src, x_tar, d, g = self.model.forward(inputs, alpha)
+        _, preds_src = torch.max(x_src.data, 1)
+        _, preds_tar = torch.max(x_tar.data, 1)
         _, preds_d = torch.max(d.data, 1)
         value_g, preds_g = torch.max(g.data, 1)
 
@@ -171,26 +144,30 @@ class synthetic_trainer():
             equal_idx = (torch.eq(utils.make_variable(torch.zeros(batch_size)).long().data, preds_d))
             conf_idx = (value_g > np.log(self.tau))
             adapt_idx = torch.nonzero(equal_idx & conf_idx).squeeze()
-            loss_F1 = utils.make_variable(torch.zeros(1))
+            loss_F_src = utils.make_variable(torch.zeros(1))
+            loss_F_tar = utils.make_variable(torch.zeros(1))
             loss_syn = utils.make_variable(torch.zeros(1))
             if len(adapt_idx.size()) > 0:
-                loss_F1 = self.model_loss(y1[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
+                loss_F_src = self.model_loss(x_src[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
+                loss_F_tar = self.model_loss(x_tar[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
                 loss_syn = self.model_loss(g[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
         else:
             domain_label = torch.zeros(batch_size)
-            loss_F1 = self.model_loss(y1, target)
+            loss_F_src = self.model_loss(x_src, target)
+            loss_F_tar = utils.make_variable(torch.zeros(1))
             loss_syn = self.model_loss(g, target)
 
         loss_D = self.domain_loss(d, utils.make_variable(domain_label.long()))
-        loss_F = loss_F1 + loss_D +  self.beta * loss_syn
+        loss_F = loss_F_src + loss_F_tar + loss_D +  self.beta * loss_syn
         loss_F.backward()
 
         # Step main optimizers
         self.model.optimizer_F.step()
-        self.model.optimizer_F1.step()
+        self.model.optimizer_F_src.step()
+        self.model.optimizer_F_tar.step()
         self.model.optimizer_D.step()
         self.model.optimizer_S.step()
-        return loss_F1, loss_D, loss_syn, preds_1, preds_d, preds_g
+        return loss_F_src, loss_F_tar, loss_D, loss_syn, preds_src, preds_tar, preds_d, preds_g
 
     def collect_stats(self, inputs, target):
         """
@@ -202,16 +179,18 @@ class synthetic_trainer():
         batch_size = len(target)
 
         # Forward classification model
-        (y1, d), g = self.model.forward(inputs, 1.)
-        _, preds_1 = torch.max(y1.data, 1)
+        x_src, x_tar, d, g = self.model.forward(inputs, 1.)
+        _, preds_src = torch.max(x_src.data, 1)
+        _, preds_tar = torch.max(x_tar.data, 1)
         _, preds_d = torch.max(d.data, 1)
         _, preds_g = torch.max(g.data, 1)
 
-        loss_F1 = self.model_loss(y1, target)
+        loss_F_src = self.model_loss(x_src, target)
+        loss_F_tar = self.model_loss(x_tar, target)
         domain_label = torch.ones(batch_size)
         loss_D = self.domain_loss(d, utils.make_variable(domain_label.long()))
         loss_syn = self.model_loss(g, target)
-        return loss_F1, loss_D, loss_syn,  preds_1, preds_d, preds_g
+        return loss_F_src, loss_F_tar, loss_D, loss_syn,  preds_src, preds_tar, preds_d, preds_g
 
     def train_model(self, batch_size, dset_sizes,dset_loaders, lr_scheduler, init_lr, gamma, power, maxIter=10000, maxEpoch=None, gpu_id=-1, save_best = 'Training'):
         """
@@ -259,10 +238,14 @@ class synthetic_trainer():
                 if phase == self.phases[0]:
                     # For caffe scheduler
                     self.model.optimizer_F = lr_scheduler(self.model.optimizer_F, gamma, power, iteration, init_lr=init_lr)
-                    self.model.optimizer_F1 = lr_scheduler(self.model.optimizer_F1, gamma, power, iteration,
+                    self.model.optimizer_F_src = lr_scheduler(self.model.optimizer_F_src, gamma, power, iteration,
                                                                  init_lr=init_lr)
+                    self.model.optimizer_F_tar = lr_scheduler(self.model.optimizer_F_tar, gamma, power, iteration,
+                                                              init_lr=init_lr)
                     self.model.optimizer_D = lr_scheduler(self.model.optimizer_D, gamma, power, iteration,
                                                                  init_lr=init_lr)
+                    self.model.optimizer_S = lr_scheduler(self.model.optimizer_S, gamma, power, iteration,
+                                                          init_lr=init_lr)
 
                     # Set model to training mode
                     self.model.train(True)
@@ -271,8 +254,10 @@ class synthetic_trainer():
                     self.model.train(False)
 
                 # Initialization for statistics
-                running_loss_F1 = 0.0
-                running_corrects_F1 = 0
+                running_loss_F_src = 0.0
+                running_corrects_F_src = 0
+                running_loss_F_tar = 0.0
+                running_corrects_F_tar = 0
                 running_loss_D = 0.0
                 running_corrects_D = 0
                 running_loss_syn = 0.0
@@ -293,7 +278,7 @@ class synthetic_trainer():
                         # Check for batch size 1 (causes errors with batch normalization)
                         if(len(target.data) != 1):
                             # Optimize the main model
-                            loss_F1, loss_D, loss_syn, preds_1, preds_d, preds_g = \
+                            loss_F_src, loss_F_tar, loss_D, loss_syn, preds_src, preds_tar, preds_d, preds_g = \
                                 self.optimize_model(key!=phase, inputs, target, alpha)
                         iteration += 1
 
@@ -305,10 +290,12 @@ class synthetic_trainer():
                         # Statistics
                         # Do not take train statistics if batch size was 1
                         if (len(target.data) != 1):
-                            running_loss_F1 += loss_F1.data[0] * inputs.size(0)
+                            running_loss_F_src += loss_F_src.data[0] * inputs.size(0)
+                            running_loss_F_tar += loss_F_tar.data[0] * inputs.size(0)
                             running_loss_D += loss_D.data[0] * inputs.size(0)
                             running_loss_syn += loss_syn.data[0] * inputs.size(0)
-                            running_corrects_F1 += torch.sum(preds_1 == target.data)
+                            running_corrects_F_src += torch.sum(preds_src == target.data)
+                            running_corrects_F_tar += torch.sum(preds_tar == target.data)
                             running_corrects_D += torch.sum(preds_d == utils.make_variable(domain_label.long()).data)
                             running_corrects_syn += torch.sum(preds_g == target.data)
                 else:
@@ -321,29 +308,33 @@ class synthetic_trainer():
                             inputs, target = Variable(inputs), Variable(target)
 
                         # Collect statistics
-                        loss_F1, loss_D, loss_syn, preds_1, preds_d, preds_g = \
+                        loss_F_src, loss_F_tar, loss_D, loss_syn, preds_src, preds_tar, preds_d, preds_g = \
                             self.collect_stats(inputs, target)
 
                         domain_label = torch.ones(len(target.data))
 
                         # Statistics
-                        running_loss_F1 += loss_F1.data[0] * inputs.size(0)
+                        running_loss_F_src += loss_F_src.data[0] * inputs.size(0)
+                        running_loss_F_tar += loss_F_tar.data[0] * inputs.size(0)
                         running_loss_D += loss_D.data[0] * inputs.size(0)
                         running_loss_syn += loss_syn.data[0] * inputs.size(0)
-                        running_corrects_F1 += torch.sum(preds_1 == target.data)
+                        running_corrects_F_src += torch.sum(preds_src == target.data)
+                        running_corrects_F_tar += torch.sum(preds_tar == target.data)
                         running_corrects_D += torch.sum(preds_d == utils.make_variable(domain_label.long()).data)
                         running_corrects_syn += torch.sum(preds_g == target.data)
 
                 # Display statistics
-                epoch_loss_F1 = running_loss_F1 / dset_sizes[phase]
+                epoch_loss_F_src = running_loss_F_src / dset_sizes[phase]
+                epoch_loss_F_tar = running_loss_F_tar / dset_sizes[phase]
                 epoch_loss_D = running_loss_D / dset_sizes[phase]
                 epoch_loss_syn = running_loss_syn / dset_sizes[phase]
-                epoch_acc_F1 = running_corrects_F1 / dset_sizes[phase]
+                epoch_acc_F_src = running_corrects_F_src / dset_sizes[phase]
+                epoch_acc_F_tar = running_corrects_F_tar / dset_sizes[phase]
                 epoch_acc_D = running_corrects_D / dset_sizes[phase]
                 epoch_acc_syn = running_corrects_syn / dset_sizes[phase]
 
-                print('{} Loss 1: {:.4f} Acc 1: {:.4f} Loss D: {:.4f} Acc D: {:.4f} Loss Syn: {:.4f} Acc Syn: {:.4f}'.format(
-                    phase, epoch_loss_F1, epoch_acc_F1, epoch_loss_D, epoch_acc_D, epoch_loss_syn, epoch_acc_syn))
+                print('{} Loss Src: {:.4f} Acc Src: {:.4f} Loss Tar: {:.4f} Acc Tar: {:.4f} Loss D: {:.4f} Acc D: {:.4f} Loss Syn: {:.4f} Acc Syn: {:.4f}'.format(
+                    phase, epoch_loss_F_src, epoch_acc_F_src, epoch_loss_F_tar, epoch_acc_F_tar, epoch_loss_D, epoch_acc_D, epoch_loss_syn, epoch_acc_syn))
 
                 # Save best model
                 if phase == self.phases[1] and save_best == 'Training':

@@ -5,7 +5,7 @@ import utils
 
 if __name__ == '__main__':
     # Initialize model and trainer
-    model = office_model.office_model(cfg.init_lr, cfg.synth_lr, cfg.momentum, cfg.weight_decay)
+    model = office_model.office_model(cfg.init_lr, cfg.momentum, cfg.weight_decay)
     trainer = office_model.synthetic_trainer(model, cfg.phases, cfg.ratios, cfg.alpha, cfg.beta, cfg.tau)
 
     # Train

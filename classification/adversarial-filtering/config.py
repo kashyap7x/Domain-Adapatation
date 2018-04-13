@@ -15,20 +15,19 @@ phases = ['amazon', 'dslr']
 gpu_id = 0
 
 # Training hyper-parameters
-ratios = {phases[0]: 0.95, phases[1]: 0.05}
+ratios = {phases[0]: 0.5, phases[1]: 0.5}
 batch_size = 16
 init_lr = 0.0003
-synth_lr = 0.01
 weight_decay = 0.0005
 momentum = 0.9
 gamma = 0.001
 power = 0.75
-maxIter = 30000
+maxIter = 60000
 
 # Domain adaptation hyper-parameters
 alpha = 10
-beta = 0.01
-tau = 0.8
+beta = 1
+tau = 0.5
 
 # Data handling
 # Rescale and normalize with mean/std
