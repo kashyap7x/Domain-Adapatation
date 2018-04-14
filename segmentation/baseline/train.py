@@ -312,9 +312,9 @@ if __name__ == '__main__':
     # Model related arguments
     parser.add_argument('--id', default='baseline',
                         help="a name for identifying the model")
-    parser.add_argument('--arch_encoder', default='resnet34_quad',
+    parser.add_argument('--arch_encoder', default='resnet34_dilated8',
                         help="architecture of net_encoder")
-    parser.add_argument('--arch_decoder', default='quad_bilinear',
+    parser.add_argument('--arch_decoder', default='psp_bilinear',
                         help="architecture of net_decoder")
     parser.add_argument('--weights_encoder', default='',
                         help="weights to finetune net_encoder")
@@ -359,9 +359,9 @@ if __name__ == '__main__':
                         help='number of classes')
     parser.add_argument('--workers', default=4, type=int,
                         help='number of data loading workers')
-    parser.add_argument('--imgSize', default=384, type=int,
+    parser.add_argument('--imgSize', default=512, type=int,
                         help='input image size')
-    parser.add_argument('--segSize', default=384, type=int,
+    parser.add_argument('--segSize', default=512, type=int,
                         help='output image size')
 
     # Misc arguments

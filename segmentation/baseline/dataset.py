@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 import torch.utils.data as torchdata
+from PIL import Image
 from torchvision import transforms
 from scipy.misc import imread, imresize
 
@@ -170,9 +171,11 @@ class GTA(torchdata.Dataset):
             img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
             seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
         else:
-            # no crop
-            img_crop = img_scale
-            seg_crop = seg_scale
+            # random crop
+            x1 = random.randint(0, w_s - cropSize)
+            y1 = random.randint(0, h_s - cropSize)
+            img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
+            seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
 
         return img_crop, seg_crop
 
@@ -183,14 +186,15 @@ class GTA(torchdata.Dataset):
 
     def __getitem__(self, index):
         img_path, seg_path = self.list_sample[index]
-        img, seg = Image.open(img_path).convert('RGB'), Image.open(seg_path)
-
-        seg = np.array(seg)
-        seg_copy = seg.copy()
+        
+        img = imread(img_path, mode='RGB')
+        seg = imread(seg_path)
+        
+        seg_copy = seg.copy().astype(np.int)
         for k, v in self.id_to_trainid.items():
             seg_copy[seg == k] = v
-        seg = Image.fromarray(seg_copy.astype(np.uint8))
-
+        seg = seg_copy
+        
         # random scale, crop, flip
         img, seg = self._scale_and_crop(img, seg,
                                         self.cropSize, self.is_train)
@@ -200,8 +204,6 @@ class GTA(torchdata.Dataset):
         # image to float
         img = img.astype(np.float32) / 255.
         img = img.transpose((2, 0, 1))
-
-        seg = seg.astype(np.int)
 
         # to torch tensor
         image = torch.from_numpy(img)
@@ -272,9 +274,11 @@ class CityScapes(torchdata.Dataset):
             img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
             seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
         else:
-            # no crop
-            img_crop = img_scale
-            seg_crop = seg_scale
+            # random crop
+            x1 = random.randint(0, w_s - cropSize)
+            y1 = random.randint(0, h_s - cropSize)
+            img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
+            seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
 
         return img_crop, seg_crop
 
@@ -285,13 +289,14 @@ class CityScapes(torchdata.Dataset):
 
     def __getitem__(self, index):
         img_path, seg_path = self.list_sample[index]
-        img, seg = Image.open(img_path).convert('RGB'), Image.open(seg_path)
 
-        seg = np.array(seg)
-        seg_copy = seg.copy()
+        img = imread(img_path, mode='RGB')
+        seg = imread(seg_path)
+        
+        seg_copy = seg.copy().astype(np.int)
         for k, v in self.id_to_trainid.items():
             seg_copy[seg == k] = v
-        seg = Image.fromarray(seg_copy.astype(np.uint8))
+        seg = seg_copy
 
         # random scale, crop, flip
         img, seg = self._scale_and_crop(img, seg,
@@ -303,7 +308,6 @@ class CityScapes(torchdata.Dataset):
         img = img.astype(np.float32) / 255.
         img = img.transpose((2, 0, 1))
 
-        seg = seg.astype(np.int)
 
         # to torch tensor
         image = torch.from_numpy(img)
