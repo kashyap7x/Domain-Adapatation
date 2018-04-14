@@ -130,9 +130,9 @@ if __name__ == '__main__':
                         help='number of features between encoder and decoder')
 
     # Data related arguments
-    parser.add_argument('--num_class', default=150, type=int,
+    parser.add_argument('--num_class', default=19, type=int,
                         help='number of classes')
-    parser.add_argument('--imgSize', default=384, type=int,
+    parser.add_argument('--imgSize', default=512, type=int,
                         help='resize input image')
     parser.add_argument('--segSize', default=-1, type=int,
                         help='output image size, -1 = keep original')

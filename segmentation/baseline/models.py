@@ -53,8 +53,8 @@ class ModelBuilder():
                 torch.load(weights, map_location=lambda storage, loc: storage))
         return net_encoder
 
-    def build_decoder(self, arch='c1_bilinear', fc_dim=2048, num_class=150,
-                      segSize=384, weights='', use_softmax=False):
+    def build_decoder(self, arch='c1_bilinear', fc_dim=2048, num_class=19,
+                      segSize=512, weights='', use_softmax=False):
         if arch == 'c1_bilinear':
             net_decoder = C1Bilinear(num_class=num_class,
                                      fc_dim=fc_dim,
@@ -176,7 +176,7 @@ class ResnetDilated(nn.Module):
 
 # last conv, bilinear upsample
 class C1Bilinear(nn.Module):
-    def __init__(self, num_class=150, fc_dim=4096, segSize=384,
+    def __init__(self, num_class=19, fc_dim=4096, segSize=512,
                  use_softmax=False):
         super(C1Bilinear, self).__init__()
         self.segSize = segSize
@@ -205,7 +205,7 @@ class C1Bilinear(nn.Module):
 
 # pyramid pooling, bilinear upsample
 class PSPBilinear(nn.Module):
-    def __init__(self, num_class=150, fc_dim=4096, segSize=384,
+    def __init__(self, num_class=19, fc_dim=4096, segSize=512,
                  use_softmax=False, pool_scales=(1, 2, 3, 6)):
         super(PSPBilinear, self).__init__()
         self.segSize = segSize

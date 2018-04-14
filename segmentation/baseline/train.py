@@ -68,8 +68,7 @@ def visualize(batch_data, pred, args):
         im_vis = np.concatenate((img, lab_color, pred_color),
                                 axis=1).astype(np.uint8)
         imsave(os.path.join(args.vis,
-                            infos[j].replace('/', '_')
-                            .replace('.jpg', '.png')), im_vis)
+                            infos[j].replace('/', '_')), im_vis)
 
 
 # train one epoch
@@ -256,8 +255,8 @@ def main(args):
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_train = GTA()
-    dataset_val = CityScapes('val', max_sample=args.num_val, is_train=0)
+    dataset_train = GTA(cropSize=args.imgSize)
+    dataset_val = CityScapes('val', cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
         batch_size=args.batch_size,
@@ -334,9 +333,9 @@ if __name__ == '__main__':
                         default='./data/ADEChallengeData2016/annotations')
 
     # optimization related arguments
-    parser.add_argument('--num_gpus', default=1, type=int,
+    parser.add_argument('--num_gpus', default=3, type=int,
                         help='number of gpus to use')
-    parser.add_argument('--batch_size_per_gpu', default=2, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=8, type=int,
                         help='input batch size')
     parser.add_argument('--num_epoch', default=100, type=int,
                         help='epochs to train for')
@@ -353,15 +352,15 @@ if __name__ == '__main__':
                         help='fix bn params')
 
     # Data related arguments
-    parser.add_argument('--num_val', default=32, type=int,
+    parser.add_argument('--num_val', default=90, type=int,
                         help='number of images to evaluate')
-    parser.add_argument('--num_class', default=150, type=int,
+    parser.add_argument('--num_class', default=19, type=int,
                         help='number of classes')
     parser.add_argument('--workers', default=4, type=int,
                         help='number of data loading workers')
-    parser.add_argument('--imgSize', default=512, type=int,
+    parser.add_argument('--imgSize', default=600, type=int,
                         help='input image size')
-    parser.add_argument('--segSize', default=512, type=int,
+    parser.add_argument('--segSize', default=600, type=int,
                         help='output image size')
 
     # Misc arguments

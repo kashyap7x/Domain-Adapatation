@@ -174,7 +174,7 @@ if __name__ == '__main__':
     # Data related arguments
     parser.add_argument('--num_val', default=-1, type=int,
                         help='number of images to evalutate')
-    parser.add_argument('--num_class', default=150, type=int,
+    parser.add_argument('--num_class', default=19, type=int,
                         help='number of classes')
     parser.add_argument('--batch_size', default=1, type=int,
                         help='batchsize')

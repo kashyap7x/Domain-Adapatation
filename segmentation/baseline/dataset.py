@@ -136,6 +136,7 @@ class GTA(torchdata.Dataset):
         self.list_sample = make_GTA()
         self.is_train = is_train
         self.cropSize = cropSize
+        self.ignore_label = ignore_label
         self.img_transform = transforms.Compose([
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])])
@@ -145,6 +146,9 @@ class GTA(torchdata.Dataset):
                               14: ignore_label, 15: ignore_label, 16: ignore_label, 17: 5,
                               18: ignore_label, 19: 6, 20: 7, 21: 8, 22: 9, 23: 10, 24: 11, 25: 12, 26: 13, 27: 14,
                               28: 15, 29: ignore_label, 30: ignore_label, 31: 16, 32: 17, 33: 18}
+        for k in range(35,256):
+            self.id_to_trainid[k] = ignore_label
+            
         if self.is_train:
             random.shuffle(self.list_sample)
         if max_sample > 0:
@@ -155,13 +159,15 @@ class GTA(torchdata.Dataset):
 
     def _scale_and_crop(self, img, seg, cropSize, is_train):
         h_s, w_s = 1052, 1914
-        if img.shape[0] == h_s and img.shape[1] == w_s and \
-            seg.shape[0] == h_s and seg.shape[1] == w_s:
+        if img.shape[0] == seg.shape[0] and img.shape[1] == seg.shape[1]:
+            h_s, w_s = img.shape[0], img.shape[1]
             img_scale = img
             seg_scale = seg
         else:
-            img_scale = imresize(img, scale, interp='bilinear')
-            seg_scale = imresize(seg, scale, interp='nearest')
+            img_scale = imresize(img, (h_s, w_s), interp='bilinear')
+            seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
+            seg_scale = seg_scale.astype(np.int)
+            seg_scale[seg_scale>18] = self.ignore_label
 
         if is_train:
             # random crop
@@ -179,15 +185,15 @@ class GTA(torchdata.Dataset):
         return img_crop, seg_crop
 
     def _flip(self, img, seg):
-        img_flip = img[:, ::-1, :]
-        seg_flip = seg[:, ::-1]
+        img_flip = img[:, ::-1, :].copy()
+        seg_flip = seg[:, ::-1].copy()
         return img_flip, seg_flip
 
     def __getitem__(self, index):
         img_path, seg_path = self.list_sample[index]
         
         img = imread(img_path, mode='RGB')
-        seg = imread(seg_path)
+        seg = imread(seg_path, mode='P')
         
         seg_copy = seg.copy().astype(np.int)
         for k, v in self.id_to_trainid.items():
@@ -203,7 +209,7 @@ class GTA(torchdata.Dataset):
         # image to float
         img = img.astype(np.float32) / 255.
         img = img.transpose((2, 0, 1))
-
+        
         # to torch tensor
         image = torch.from_numpy(img)
         segmentation = torch.from_numpy(seg)
@@ -258,13 +264,13 @@ class CityScapes(torchdata.Dataset):
 
     def _scale_and_crop(self, img, seg, cropSize, is_train):
         h_s, w_s = 1024, 2048
-        if img.shape[0] == h_s and img.shape[1] == w_s and \
-            seg.shape[0] == h_s and seg.shape[1] == w_s:
+        if img.shape[0] == seg.shape[0] and img.shape[1] == seg.shape[1]:
+            h_s, w_s = img.shape[0], img.shape[1]
             img_scale = img
             seg_scale = seg
         else:
-            img_scale = imresize(img, scale, interp='bilinear')
-            seg_scale = imresize(seg, scale, interp='nearest')
+            img_scale = imresize(img, (h_s, w_s), interp='bilinear')
+            seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
 
         if is_train:
             # random crop
@@ -282,15 +288,15 @@ class CityScapes(torchdata.Dataset):
         return img_crop, seg_crop
 
     def _flip(self, img, seg):
-        img_flip = img[:, ::-1, :]
-        seg_flip = seg[:, ::-1]
+        img_flip = img[:, ::-1, :].copy()
+        seg_flip = seg[:, ::-1].copy()
         return img_flip, seg_flip
 
     def __getitem__(self, index):
         img_path, seg_path = self.list_sample[index]
 
         img = imread(img_path, mode='RGB')
-        seg = imread(seg_path)
+        seg = imread(seg_path, mode='P')
         
         seg_copy = seg.copy().astype(np.int)
         for k, v in self.id_to_trainid.items():
@@ -306,8 +312,7 @@ class CityScapes(torchdata.Dataset):
         # image to float
         img = img.astype(np.float32) / 255.
         img = img.transpose((2, 0, 1))
-
-
+        
         # to torch tensor
         image = torch.from_numpy(img)
         segmentation = torch.from_numpy(seg)
