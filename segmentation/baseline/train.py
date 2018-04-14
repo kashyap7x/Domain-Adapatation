@@ -38,7 +38,7 @@ def forward_with_loss(nets, batch_data, args, is_train=True):
 
 
 def visualize(batch_data, pred, args):
-    colors = loadmat('data/color150.mat')['colors']
+    colors = loadmat('../colormap.mat')['colors']
     (imgs, segs, infos) = batch_data
     for j in range(len(infos)):
         # get/recover image

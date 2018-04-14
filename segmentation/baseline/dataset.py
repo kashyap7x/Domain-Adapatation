@@ -3,7 +3,6 @@ import random
 import numpy as np
 import torch
 import torch.utils.data as torchdata
-from PIL import Image
 from torchvision import transforms
 from scipy.misc import imread, imresize
 

@@ -43,7 +43,7 @@ def forward_test_multiscale(nets, img, args):
 
 
 def visualize_test_result(img, pred, args):
-    colors = loadmat('data/color150.mat')['colors']
+    colors = loadmat('../colormap.mat')['colors']
     # recover image
     img = img[0]
     pred = pred.data.cpu()[0]
