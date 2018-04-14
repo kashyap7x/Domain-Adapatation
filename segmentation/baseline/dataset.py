@@ -119,9 +119,9 @@ class Dataset(torchdata.Dataset):
         return len(self.list_sample)
 
 
-def make_GTA(root='/media/usb/datasets/'):
-    image_root = root + 'playing'
-    mask_root = root + 'playing_annotations'
+def make_GTA(root):
+    image_root = os.path.join(root, 'playing')
+    mask_root = os.path.join(root, 'playing_annotations')
     items = []
     imgdirs = os.listdir(image_root)
     for filename in imgdirs:
@@ -132,8 +132,8 @@ def make_GTA(root='/media/usb/datasets/'):
 
 
 class GTA(torchdata.Dataset):
-    def __init__(self, cropSize=512, ignore_label=-1, max_sample=-1, is_train=1):
-        self.list_sample = make_GTA()
+    def __init__(self, root, cropSize=512, ignore_label=-1, max_sample=-1, is_train=1):
+        self.list_sample = make_GTA(root)
         self.is_train = is_train
         self.cropSize = cropSize
         self.ignore_label = ignore_label
@@ -223,7 +223,7 @@ class GTA(torchdata.Dataset):
         return len(self.list_sample)
 
 
-def make_CityScapes(mode, root='/media/usb/datasets/cityscapes_full'):
+def make_CityScapes(mode, root):
     img_dir_name = 'leftImg8bit_trainvaltest'
     mask_path = os.path.join(root, 'gtFine_trainvaltest', 'gtFine', mode)
     mask_postfix = '_gtFine_labelIds.png'
@@ -240,8 +240,8 @@ def make_CityScapes(mode, root='/media/usb/datasets/cityscapes_full'):
 
 
 class CityScapes(torchdata.Dataset):
-    def __init__(self, mode, cropSize=512, ignore_label=-1, max_sample=-1, is_train=1):
-        self.list_sample = make_CityScapes(mode)
+    def __init__(self, mode, root, cropSize=512, ignore_label=-1, max_sample=-1, is_train=1):
+        self.list_sample = make_CityScapes(mode, root)
         self.mode = mode
         self.cropSize = cropSize
         self.is_train = is_train
@@ -263,27 +263,26 @@ class CityScapes(torchdata.Dataset):
         print('# samples: {}'.format(num_sample))
 
     def _scale_and_crop(self, img, seg, cropSize, is_train):
-        h_s, w_s = 1024, 2048
-        if img.shape[0] == seg.shape[0] and img.shape[1] == seg.shape[1]:
-            h_s, w_s = img.shape[0], img.shape[1]
-            img_scale = img
-            seg_scale = seg
-        else:
-            img_scale = imresize(img, (h_s, w_s), interp='bilinear')
-            seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
 
         if is_train:
+            h_s, w_s = 1024, 2048
+            if img.shape[0] == seg.shape[0] and img.shape[1] == seg.shape[1]:
+                h_s, w_s = img.shape[0], img.shape[1]
+                img_scale = img
+                seg_scale = seg
+            else:
+                img_scale = imresize(img, (h_s, w_s), interp='bilinear')
+                seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
+            
             # random crop
             x1 = random.randint(0, w_s - cropSize)
             y1 = random.randint(0, h_s - cropSize)
             img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
             seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
         else:
-            # random crop
-            x1 = random.randint(0, w_s - cropSize)
-            y1 = random.randint(0, h_s - cropSize)
-            img_crop = img_scale[y1: y1 + cropSize, x1: x1 + cropSize, :]
-            seg_crop = seg_scale[y1: y1 + cropSize, x1: x1 + cropSize]
+            # no crop
+            img_crop = img
+            seg_crop = seg
 
         return img_crop, seg_crop
 

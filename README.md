@@ -5,10 +5,10 @@
 - Filtering for synthetic gradients by voting added
 - Adversarial filtering added
 - PSPNet baseline for CityScapes added
+- Pretrined segmentation model loading done (place in segmentation/pretrained)
+- Full-scale testing for segmentation
 
 ## TODO
 
 - Logging and plots for Office31
-- Pretrined segmentation model loading
-- Full-scale testing for segmentation
-- Check imresize for annotation (causing invalig mask annotations)
+- Check imresize for annotation

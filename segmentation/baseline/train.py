@@ -49,20 +49,14 @@ def visualize(batch_data, pred, args):
                            [0.229, 0.224, 0.225]):
             t.mul_(s).add_(m)
         img = (img.numpy().transpose((1, 2, 0)) * 255).astype(np.uint8)
-        img = imresize(img, (args.imgSize, args.imgSize),
-                       interp='bilinear')
 
         # segmentation
         lab = segs[j].numpy()
         lab_color = colorEncode(lab, colors)
-        lab_color = imresize(lab_color, (args.imgSize, args.imgSize),
-                             interp='nearest')
 
         # prediction
         pred_ = np.argmax(pred.data.cpu()[j].numpy(), axis=0)
         pred_color = colorEncode(pred_, colors)
-        pred_color = imresize(pred_color, (args.imgSize, args.imgSize),
-                              interp='nearest')
 
         # aggregate images and save
         im_vis = np.concatenate((img, lab_color, pred_color),
@@ -248,15 +242,14 @@ def main(args):
                                         weights=args.weights_encoder)
     net_decoder = builder.build_decoder(arch=args.arch_decoder,
                                         fc_dim=args.fc_dim,
-                                        segSize=args.segSize,
                                         num_class=args.num_class,
                                         weights=args.weights_decoder)
 
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_train = GTA(cropSize=args.imgSize)
-    dataset_val = CityScapes('val', cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
+    dataset_train = GTA(cropSize=args.imgSize, root=args.root_playing)
+    dataset_val = CityScapes('val', root=args.root_cityscapes, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
         batch_size=args.batch_size,
@@ -315,40 +308,36 @@ if __name__ == '__main__':
                         help="architecture of net_encoder")
     parser.add_argument('--arch_decoder', default='psp_bilinear',
                         help="architecture of net_decoder")
-    parser.add_argument('--weights_encoder', default='',
+    parser.add_argument('--weights_encoder', default='../pretrained/encoder_best.pth',
                         help="weights to finetune net_encoder")
-    parser.add_argument('--weights_decoder', default='',
+    parser.add_argument('--weights_decoder', default='../pretrained/decoder_best.pth',
                         help="weights to finetune net_decoder")
     parser.add_argument('--fc_dim', default=512, type=int,
                         help='number of features between encoder and decoder')
 
     # Path related arguments
-    parser.add_argument('--list_train',
-                        default='./data/ADE20K_object150_train.txt')
-    parser.add_argument('--list_val',
-                        default='./data/ADE20K_object150_val.txt')
-    parser.add_argument('--root_img',
-                        default='./data/ADEChallengeData2016/images')
-    parser.add_argument('--root_seg',
-                        default='./data/ADEChallengeData2016/annotations')
+    parser.add_argument('--root_cityscapes',
+                        default='/home/selfdriving/datasets/cityscapes_full')
+    parser.add_argument('--root_playing',
+                        default='/home/selfdriving/datasets/GTA_full')
 
     # optimization related arguments
     parser.add_argument('--num_gpus', default=3, type=int,
                         help='number of gpus to use')
-    parser.add_argument('--batch_size_per_gpu', default=8, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=6, type=int,
                         help='input batch size')
-    parser.add_argument('--num_epoch', default=100, type=int,
+    parser.add_argument('--num_epoch', default=20, type=int,
                         help='epochs to train for')
     parser.add_argument('--optim', default='SGD', help='optimizer')
-    parser.add_argument('--lr_encoder', default=0.1, type=float, help='LR')
-    parser.add_argument('--lr_decoder', default=1, type=float, help='LR')
+    parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')
+    parser.add_argument('--lr_decoder', default=1e-2, type=float, help='LR')
     parser.add_argument('--lr_pow', default=0.9, type=float,
                         help='power in poly to drop LR')
     parser.add_argument('--beta1', default=0.9, type=float,
                         help='momentum for sgd, beta1 for adam')
     parser.add_argument('--weight_decay', default=1e-4, type=float,
                         help='weights regularizer')
-    parser.add_argument('--fix_bn', default=1, type=int,
+    parser.add_argument('--fix_bn', default=0, type=int,
                         help='fix bn params')
 
     # Data related arguments
@@ -358,9 +347,9 @@ if __name__ == '__main__':
                         help='number of classes')
     parser.add_argument('--workers', default=4, type=int,
                         help='number of data loading workers')
-    parser.add_argument('--imgSize', default=600, type=int,
+    parser.add_argument('--imgSize', default=640, type=int,
                         help='input image size')
-    parser.add_argument('--segSize', default=600, type=int,
+    parser.add_argument('--segSize', default=640, type=int,
                         help='output image size')
 
     # Misc arguments

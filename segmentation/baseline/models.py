@@ -53,8 +53,8 @@ class ModelBuilder():
                 torch.load(weights, map_location=lambda storage, loc: storage))
         return net_encoder
 
-    def build_decoder(self, arch='c1_bilinear', fc_dim=2048, num_class=19,
-                      segSize=512, weights='', use_softmax=False):
+    def build_decoder(self, arch='c1_bilinear', fc_dim=512, num_class=19,
+                      upSampleScale=8, weights='', use_softmax=False):
         if arch == 'c1_bilinear':
             net_decoder = C1Bilinear(num_class=num_class,
                                      fc_dim=fc_dim,
@@ -63,7 +63,7 @@ class ModelBuilder():
         elif arch == 'psp_bilinear':
             net_decoder = PSPBilinear(num_class=num_class,
                                       fc_dim=fc_dim,
-                                      segSize=segSize,
+                                      upSampleScale=upSampleScale,
                                       use_softmax=use_softmax)
         else:
             raise Exception('Architecture undefined!')
@@ -71,8 +71,8 @@ class ModelBuilder():
         net_decoder.apply(self.weights_init)
         if len(weights) > 0:
             print('Loading weights for net_decoder')
-            net_decoder.load_state_dict(
-                torch.load(weights, map_location=lambda storage, loc: storage))
+            pretrained_dict = torch.load(weights, map_location=lambda storage, loc: storage)
+            net_decoder.load_state_dict(pretrained_dict, strict=False)
         return net_decoder
 
 
@@ -176,7 +176,7 @@ class ResnetDilated(nn.Module):
 
 # last conv, bilinear upsample
 class C1Bilinear(nn.Module):
-    def __init__(self, num_class=19, fc_dim=4096, segSize=512,
+    def __init__(self, num_class=19, fc_dim=512, segSize=512,
                  use_softmax=False):
         super(C1Bilinear, self).__init__()
         self.segSize = segSize
@@ -205,10 +205,10 @@ class C1Bilinear(nn.Module):
 
 # pyramid pooling, bilinear upsample
 class PSPBilinear(nn.Module):
-    def __init__(self, num_class=19, fc_dim=4096, segSize=512,
+    def __init__(self, num_class=19, fc_dim=512, upSampleScale=8,
                  use_softmax=False, pool_scales=(1, 2, 3, 6)):
         super(PSPBilinear, self).__init__()
-        self.segSize = segSize
+        self.upSampleScale = upSampleScale
         self.use_softmax = use_softmax
 
         self.psp = []
@@ -221,7 +221,7 @@ class PSPBilinear(nn.Module):
             ))
         self.psp = nn.ModuleList(self.psp)
 
-        self.conv_last = nn.Sequential(
+        self.conv_final = nn.Sequential(
             nn.Conv2d(fc_dim+len(pool_scales)*512, 512,
                       kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(512),
@@ -230,12 +230,9 @@ class PSPBilinear(nn.Module):
             nn.Conv2d(512, num_class, kernel_size=1)
         )
 
-    def forward(self, x, segSize=None):
-        if segSize is None:
-            segSize = (self.segSize, self.segSize)
-        elif isinstance(segSize, int):
-            segSize = (segSize, segSize)
-
+    def forward(self, x, upSampleScale=None):
+        if upSampleScale is None:
+            upSampleScale = self.upSampleScale
         input_size = x.size()
         psp_out = [x]
         for pool_scale in self.psp:
@@ -245,10 +242,8 @@ class PSPBilinear(nn.Module):
                 mode='bilinear'))
         psp_out = torch.cat(psp_out, 1)
 
-        x = self.conv_last(psp_out)
-
-        if not (input_size[2] == segSize[0] and input_size[3] == segSize[1]):
-            x = nn.functional.upsample(x, size=segSize, mode='bilinear')
+        x = self.conv_final(psp_out)
+        x = nn.functional.upsample(x, size=(input_size[2]*upSampleScale, input_size[3]*upSampleScale), mode='bilinear')
 
         if self.use_softmax:
             x = nn.functional.softmax(x)
