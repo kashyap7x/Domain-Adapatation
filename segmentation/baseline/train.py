@@ -131,6 +131,7 @@ def evaluate(nets, loader, history, epoch, args):
 
     for i, batch_data in enumerate(loader):
         # forward pass
+        torch.cuda.empty_cache()
         pred, err = forward_with_loss(nets, batch_data, args, is_train=False)
         loss_meter.update(err.data[0])
         print('[Eval] iter {}, loss: {}'.format(i, err.data[0]))
@@ -285,16 +286,16 @@ def main(args):
     evaluate(nets, loader_val, history, 0, args)
     for epoch in range(1, args.num_epoch + 1):
         train(nets, loader_train, optimizers, history, epoch, args)
-
-        # Evaluation and visualization
-        if epoch % args.eval_epoch == 0:
-            evaluate(nets, loader_val, history, epoch, args)
-
+        
         # checkpointing
         checkpoint(nets, history, args)
 
         # adjust learning rate
         adjust_learning_rate(optimizers, epoch, args)
+        
+        # Evaluation and visualization
+        if epoch % args.eval_epoch == 0:
+            evaluate(nets, loader_val, history, epoch, args)
 
     print('Training Done!')
 
