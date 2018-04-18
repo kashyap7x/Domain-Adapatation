@@ -7,8 +7,9 @@
 - PSPNet baseline for CityScapes added
 - Pretrined segmentation model loading done (place in segmentation/pretrained)
 - Full-scale testing for segmentation
+- Added skeleton code for adaptation of segmentation (filtered gradients) 
 
 ## TODO
 
 - Logging and plots for Office31
-- Check imresize for annotation
+- Finish segmentation + filtered gradients
