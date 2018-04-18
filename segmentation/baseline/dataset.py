@@ -165,9 +165,10 @@ class GTA(torchdata.Dataset):
             seg_scale = seg
         else:
             img_scale = imresize(img, (h_s, w_s), interp='bilinear')
+            seg = (seg + 1).astype(np.uint8)
             seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
-            seg_scale = seg_scale.astype(np.int)
-            seg_scale[seg_scale>18] = self.ignore_label
+            seg_scale = seg_scale.astype(np.int) - 1
+            #seg_scale[seg_scale>18] = self.ignore_label
 
         if is_train:
             # random crop
@@ -272,7 +273,9 @@ class CityScapes(torchdata.Dataset):
                 seg_scale = seg
             else:
                 img_scale = imresize(img, (h_s, w_s), interp='bilinear')
+                seg = (seg + 1).astype(np.uint8)
                 seg_scale = imresize(seg, (h_s, w_s), interp='nearest')
+                seg_scale = seg_scale.astype(np.int) - 1
             
             # random crop
             x1 = random.randint(0, w_s - cropSize)

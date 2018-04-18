@@ -91,9 +91,9 @@ class office_model(nn.Module):
         # Domain classifier
         xrev = utils.ReverseLayerF.apply(x, alpha)
         d = self.D(xrev)
-
+        
         # Synthetic module
-        g = self.S(torch.cat((x_src, x_tar, d), 1))
+        g = self.S(torch.cat((x_src, x_tar, utils.make_variable(d.data)), 1))
         return x_src, x_tar, d, g
 
 
@@ -148,9 +148,9 @@ class synthetic_trainer():
             loss_F_tar = utils.make_variable(torch.zeros(1))
             loss_syn = utils.make_variable(torch.zeros(1))
             if len(adapt_idx.size()) > 0:
-                loss_F_src = self.model_loss(x_src[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
+                #loss_F_src = self.model_loss(x_src[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
                 loss_F_tar = self.model_loss(x_tar[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
-                loss_syn = self.model_loss(g[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
+                #loss_syn = self.model_loss(g[adapt_idx, :], utils.make_variable(preds_g[adapt_idx]))
         else:
             domain_label = torch.zeros(batch_size)
             loss_F_src = self.model_loss(x_src, target)

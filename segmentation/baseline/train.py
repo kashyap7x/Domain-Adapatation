@@ -250,6 +250,7 @@ def main(args):
 
     # Dataset and Loader
     dataset_train = GTA(cropSize=args.imgSize, root=args.root_playing)
+    #dataset_train =  CityScapes('train', root=args.root_cityscapes, cropSize=args.imgSize, is_train=1)
     dataset_val = CityScapes('val', root=args.root_cityscapes, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -282,7 +283,7 @@ def main(args):
     # Main loop
     history = {split: {'epoch': [], 'err': [], 'acc': []}
                for split in ('train', 'val')}
-    # initial eval
+    # optional initial eval
     evaluate(nets, loader_val, history, 0, args)
     for epoch in range(1, args.num_epoch + 1):
         train(nets, loader_train, optimizers, history, epoch, args)
@@ -327,7 +328,7 @@ if __name__ == '__main__':
                         help='number of gpus to use')
     parser.add_argument('--batch_size_per_gpu', default=6, type=int,
                         help='input batch size')
-    parser.add_argument('--num_epoch', default=20, type=int,
+    parser.add_argument('--num_epoch', default=5, type=int,
                         help='epochs to train for')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')

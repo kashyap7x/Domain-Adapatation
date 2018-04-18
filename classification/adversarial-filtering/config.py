@@ -4,7 +4,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
 # Data location
-datasetRoot = 'C:\\torch\\data\\Office31\\'
+datasetRoot = '/home/selfdriving/datasets/office/domain_adaptation_images/'
 
 # Names
 datasetNames = ['amazon', 'dslr', 'webcam']
