@@ -32,31 +32,53 @@ def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False):
     label_seg = label_seg.cuda()
 
     # forward
-    pred_1 = net_decoder_1(net_encoder(input_img))
-    pred_2 = net_decoder_2(net_encoder(input_img))
-    pred_syn = net_syn(pred_1, pred_2)
+    pred_featuremap_1 = net_decoder_1(net_encoder(input_img))
+    pred_featuremap_2 = net_decoder_2(net_encoder(input_img))
+    pred_featuremap_syn = net_syn(pred_featuremap_1, pred_featuremap_2)
 
-    weights1 = net_decoder_1.get_weights()
-    weights2 = net_decoder_2.get_weights()
+    weights1 = net_decoder_1.module.get_weights()
+    weights2 = net_decoder_2.module.get_weights()
 
     if is_adapt:
-        adapt_idx = (torch.eq(pred_1, pred_2))
-        err_1 = make_variable(torch.zeros(1))
-        err_2 = make_variable(torch.zeros(1))
-        err_syn = make_variable(torch.zeros(1))
-        if len(adapt_idx.size()) > 0:
-            err_1 = crit(pred_1[adapt_idx, :], make_variable(preds_syn[adapt_idx]))
-            err_2 = crit(pred_2[adapt_idx, :], make_variable(preds_syn[adapt_idx]))
-            err_syn = crit(pred_syn[adapt_idx, :], make_variable(preds_syn[adapt_idx]))
-    else:
-        err_1 = crit(pred1, label_seg)
-        err_2 = crit(pred2, label_seg)
-        err_syn = crit(pred_syn, label_seg)
+        _, pred_1 = torch.max(pred_featuremap_1, 1)
+        _, pred_2 = torch.max(pred_featuremap_2, 1)
+        _, pred_syn = torch.max(pred_featuremap_syn, 1)
 
-    err_sim = similiarityPenalty(weights1, weights2)
+        # reshape the feature map as class_num * (batch_size * h * w)
+        pred_1 = pred_1.view(1, -1)
+        pred_2 = pred_2.view(1, -1)
+        pred_syn = pred_syn.view(1, -1)
+
+        adapt_idx = (torch.eq(pred_1, pred_2)).squeeze()
+
+        # all the rest are ignored indexes
+        ignored_idx = (adapt_idx == 0).nonzero().squeeze()
+        if len(ignored_idx.size()) > 0:
+            pred_syn[..., ignored_idx] = -1
+
+        # reshape back to use NLLLoss2d
+        # TODO: not sure whether this view can reproduce the same one
+        pred_syn = pred_syn.view(pred_featuremap_syn.size(0), pred_featuremap_syn.size(2), pred_featuremap_syn.size(3))
+
+        if len(adapt_idx.size()) > 0:
+            err_1 = crit(pred_featuremap_1, pred_syn)
+            err_2 = crit(pred_featuremap_2, pred_syn)
+            # err_syn = crit(pred_featuremap_syn, pred_syn)
+            err_syn = 0
+        else:
+            err_1 = 0
+            err_2 = 0
+            err_syn = 0
+    else:
+        err_1 = crit(pred_featuremap_1, label_seg)
+        err_2 = crit(pred_featuremap_2, label_seg)
+        err_syn = crit(pred_featuremap_syn, label_seg)
+
+    err_sim = similiarityPenalty(weights1.squeeze(), weights2.squeeze())
 
     err = err_1 + err_2 + args.alpha * err_sim + args.beta * err_syn
-    return pred_syn, err
+
+    return pred_featuremap_syn, err
 
 
 def visualize(batch_data, pred, args):
@@ -349,8 +371,9 @@ def main(args):
     # Main loop
     history = {split: {'epoch': [], 'err': [], 'acc': []}
                for split in ('train', 'val')}
-    # optional initial eval
-    evaluate(nets, loader_val, history, 0, args)
+
+    # no evaluation for now
+    # evaluate(nets, loader_val, history, 0, args)
     for epoch in range(1, args.num_epoch + 1):
         train(nets, loader_train, loader_adapt, optimizers, history, epoch, args)
         
@@ -361,8 +384,10 @@ def main(args):
         adjust_learning_rate(optimizers, epoch, args)
         
         # Evaluation and visualization
-        if epoch % args.eval_epoch == 0:
-            evaluate(nets, loader_val, history, epoch, args)
+
+        # no evaluation for now
+        # if epoch % args.eval_epoch == 0:
+        #     evaluate(nets, loader_val, history, epoch, args)
 
     print('Training Done!')
 
@@ -376,9 +401,9 @@ if __name__ == '__main__':
                         help="architecture of net_encoder")
     parser.add_argument('--arch_decoder', default='psp_bilinear',
                         help="architecture of net_decoder")
-    parser.add_argument('--weights_encoder', default='../pretrained/encoder_best.pth',
+    parser.add_argument('--weights_encoder', default='/home/selfdriving/kchitta/Domain-Adapatation/segmentation/pretrained/encoder_best.pth',
                         help="weights to finetune net_encoder")
-    parser.add_argument('--weights_decoder', default='../pretrained/decoder_best.pth',
+    parser.add_argument('--weights_decoder', default='/home/selfdriving/kchitta/Domain-Adapatation/segmentation/pretrained/decoder_best.pth',
                         help="weights to finetune net_decoder")
     parser.add_argument('--fc_dim', default=512, type=int,
                         help='number of features between encoder and decoder')
@@ -394,7 +419,7 @@ if __name__ == '__main__':
                         help='number of gpus to use')
     parser.add_argument('--batch_size_per_gpu', default=6, type=int,
                         help='input batch size')
-    parser.add_argument('--num_epoch', default=5, type=int,
+    parser.add_argument('--num_epoch', default=20, type=int,
                         help='epochs to train for')
     parser.add_argument('--ratio_source', default=0.9, type=float,
                         help='sampling ratio for source domain')

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import resnet
-from utils import gather
+# from utils import gather
 
 class ModelBuilder():
     # custom weights initialization
@@ -74,6 +74,10 @@ class ModelBuilder():
             pretrained_dict = torch.load(weights, map_location=lambda storage, loc: storage)
             net_decoder.load_state_dict(pretrained_dict, strict=False)
         return net_decoder
+
+    def build_syn(self, num_class=19, use_softmax=False):
+        net_syn = SynModel(num_class=num_class, use_softmax=use_softmax)
+        return net_syn
 
 
 class Resnet(nn.Module):
@@ -202,6 +206,9 @@ class C1Bilinear(nn.Module):
             x = nn.functional.log_softmax(x)
         return x
 
+    def get_weights(self):
+        return self.conv_last.weight
+
 
 # pyramid pooling, bilinear upsample
 class PSPBilinear(nn.Module):
@@ -250,3 +257,22 @@ class PSPBilinear(nn.Module):
         else:
             x = nn.functional.log_softmax(x)
         return x
+
+    def get_weights(self):
+        return self.conv_final[-1].weight
+
+class SynModel(nn.Module):
+    def __init__(self, num_class=19, use_softmax=False):
+        super(SynModel, self).__init__()
+        self.num_class = num_class
+        self.use_softmax = use_softmax
+        self.conv = nn.Conv2d(in_channels=2 * num_class, out_channels=num_class, kernel_size=1)
+
+    def forward(self, pred_1, pred_2):
+        pred = torch.cat([pred_1, pred_2], dim=1)
+        pred = self.conv(pred)
+        if self.use_softmax:
+            pred = nn.functional.softmax(pred)
+        else:
+            pred = nn.functional.log_softmax(pred)
+        return pred
