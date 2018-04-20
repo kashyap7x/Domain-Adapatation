@@ -5,11 +5,14 @@
 - Filtering for synthetic gradients by voting added
 - Adversarial filtering added
 - PSPNet baseline for CityScapes added
-- Pretrined segmentation model loading done (place in segmentation/pretrained)
-- Full-scale testing for segmentation
-- Added skeleton code for adaptation of segmentation (filtered gradients) 
+- Pretrined segmentation model loading done (place in `segmentation/pretrained`)
+- Full-scale testing for segmentation (different batch size)
+- Added code for adaptation of segmentation (filtered gradients) 
 
 ## TODO
 
 - Logging and plots for Office31
-- Finish segmentation + filtered gradients
+- Check view for NLLLoss2d
+- New metrics (% filtered gradients, accuracy of filtered gradients)
+- Eval code for mIoU, class IoUs
+

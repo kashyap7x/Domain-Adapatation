@@ -343,9 +343,9 @@ def main(args):
         drop_last=True)
     loader_val = torch.utils.data.DataLoader(
         dataset_val,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size_eval,
         shuffle=False,
-        num_workers=2,
+        num_workers=int(args.workers),
         drop_last=True)
     args.epoch_iters = int(len(dataset_train) / args.batch_size)
     print('1 Epoch = {} iters'.format(args.epoch_iters))
@@ -372,8 +372,7 @@ def main(args):
     history = {split: {'epoch': [], 'err': [], 'acc': []}
                for split in ('train', 'val')}
 
-    # no evaluation for now
-    # evaluate(nets, loader_val, history, 0, args)
+    evaluate(nets, loader_val, history, 0, args)
     for epoch in range(1, args.num_epoch + 1):
         train(nets, loader_train, loader_adapt, optimizers, history, epoch, args)
         
@@ -384,10 +383,8 @@ def main(args):
         adjust_learning_rate(optimizers, epoch, args)
         
         # Evaluation and visualization
-
-        # no evaluation for now
-        # if epoch % args.eval_epoch == 0:
-        #     evaluate(nets, loader_val, history, epoch, args)
+        if epoch % args.eval_epoch == 0:
+            evaluate(nets, loader_val, history, epoch, args)
 
     print('Training Done!')
 
@@ -419,6 +416,8 @@ if __name__ == '__main__':
                         help='number of gpus to use')
     parser.add_argument('--batch_size_per_gpu', default=6, type=int,
                         help='input batch size')
+    parser.add_argument('--batch_size_per_gpu_eval', default=5, type=int,
+                        help='eval batch size')
     parser.add_argument('--num_epoch', default=20, type=int,
                         help='epochs to train for')
     parser.add_argument('--ratio_source', default=0.9, type=float,
@@ -468,6 +467,8 @@ if __name__ == '__main__':
         print("{:16} {}".format(key, val))
 
     args.batch_size = args.num_gpus * args.batch_size_per_gpu
+    args.batch_size_eval = args.num_gpus * args.batch_size_per_gpu_eval
+
     if args.num_val < args.batch_size:
         args.num_val = args.batch_size
 
