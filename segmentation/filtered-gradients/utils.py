@@ -130,11 +130,16 @@ def intersectionAndUnion(batch_data, pred, numClass):
     return area_intersect, area_union
 
 
-def randomSampler(prob_source, loader, loader_adapt):
+def randomSampler(prob_init, prob_final, epoch_final, epoch, loader, loader_adapt):
     """
     Sampler that gets batches from different datasets based on a sampling ratio
     """
     prob = np.random.rand(1)
+    prob_delta = (prob_init - prob_final) * epoch / epoch_final
+    if epoch < epoch_final:
+        prob_source = prob_init - prob_delta
+    else:
+        prob_source = prob_final    
     if prob < prob_source:
         return iter(loader).next(), False
     else:

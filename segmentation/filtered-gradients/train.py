@@ -125,7 +125,8 @@ def train(nets, loader, loader_adapt, optimizers, history, epoch, args):
     tic = time.time()
     #for i, batch_data in enumerate(loader):
     for i in range(args.epoch_iters):
-        batch_data, is_adapt = randomSampler(args.ratio_source, loader, loader_adapt)
+        batch_data, is_adapt = randomSampler(args.ratio_source_init, args.ratio_source_final, \
+                                             args.ratio_source_final_epoch, epoch, loader, loader_adapt)
         data_time.update(time.time() - tic)
         for net in nets:
             net.zero_grad()
@@ -259,11 +260,11 @@ def checkpoint(nets, history, args):
         torch.save(dict_encoder,
                    '{}/encoder_{}'.format(args.ckpt, suffix_best))
         torch.save(dict_decoder_1,
-                   '{}/decoder_1_{}'.format(args.ckpt, suffix_latest))
+                   '{}/decoder_1_{}'.format(args.ckpt, suffix_best))
         torch.save(dict_decoder_2,
-                   '{}/decoder_2_{}'.format(args.ckpt, suffix_latest))
+                   '{}/decoder_2_{}'.format(args.ckpt, suffix_best))
         torch.save(dict_syn,
-                   '{}/syn_{}'.format(args.ckpt, suffix_latest))
+                   '{}/syn_{}'.format(args.ckpt, suffix_best))
 
 
 def create_optimizers(nets, args):
@@ -372,27 +373,28 @@ def main(args):
     history = {split: {'epoch': [], 'err': [], 'acc': []}
                for split in ('train', 'val')}
 
-    evaluate(nets, loader_val, history, 0, args)
+    # optional initial eval
+    # evaluate(nets, loader_val, history, 0, args)
     for epoch in range(1, args.num_epoch + 1):
         train(nets, loader_train, loader_adapt, optimizers, history, epoch, args)
         
+        # Evaluation and visualization
+        if epoch % args.eval_epoch == 0:
+            evaluate(nets, loader_val, history, epoch, args)
+
         # checkpointing
         checkpoint(nets, history, args)
 
         # adjust learning rate
         adjust_learning_rate(optimizers, epoch, args)
         
-        # Evaluation and visualization
-        if epoch % args.eval_epoch == 0:
-            evaluate(nets, loader_val, history, epoch, args)
-
     print('Training Done!')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # Model related arguments
-    parser.add_argument('--id', default='baseline',
+    parser.add_argument('--id', default='adapt',
                         help="a name for identifying the model")
     parser.add_argument('--arch_encoder', default='resnet34_dilated8',
                         help="architecture of net_encoder")
@@ -414,14 +416,18 @@ if __name__ == '__main__':
     # optimization related arguments
     parser.add_argument('--num_gpus', default=3, type=int,
                         help='number of gpus to use')
-    parser.add_argument('--batch_size_per_gpu', default=6, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=4, type=int,
                         help='input batch size')
-    parser.add_argument('--batch_size_per_gpu_eval', default=5, type=int,
+    parser.add_argument('--batch_size_per_gpu_eval', default=3, type=int,
                         help='eval batch size')
-    parser.add_argument('--num_epoch', default=20, type=int,
+    parser.add_argument('--num_epoch', default=10, type=int,
                         help='epochs to train for')
-    parser.add_argument('--ratio_source', default=0.9, type=float,
-                        help='sampling ratio for source domain')
+    parser.add_argument('--ratio_source_init', default=0.8, type=float,
+                        help='initial sampling ratio for source domain')
+    parser.add_argument('--ratio_source_final', default=0.4, type=float,
+                        help='final sampling ratio for source domain')
+    parser.add_argument('--ratio_source_final_epoch', default=5, type=int,
+                        help='epoch beyond which to maintain final ratio')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')
     parser.add_argument('--lr_decoder', default=1e-2, type=float, help='LR')
@@ -443,11 +449,11 @@ if __name__ == '__main__':
                         help='number of images to evaluate')
     parser.add_argument('--num_class', default=19, type=int,
                         help='number of classes')
-    parser.add_argument('--workers', default=4, type=int,
+    parser.add_argument('--workers', default=1, type=int,
                         help='number of data loading workers')
-    parser.add_argument('--imgSize', default=640, type=int,
+    parser.add_argument('--imgSize', default=600, type=int,
                         help='input image size')
-    parser.add_argument('--segSize', default=640, type=int,
+    parser.add_argument('--segSize', default=600, type=int,
                         help='output image size')
 
     # Misc arguments
@@ -477,10 +483,12 @@ if __name__ == '__main__':
     args.id += '-ngpus' + str(args.num_gpus)
     args.id += '-batchSize' + str(args.batch_size)
     args.id += '-imgSize' + str(args.imgSize)
-    args.id += '-segSize' + str(args.segSize)
     args.id += '-lr_encoder' + str(args.lr_encoder)
     args.id += '-lr_decoder' + str(args.lr_decoder)
     args.id += '-epoch' + str(args.num_epoch)
+    args.id += '-ratio' + str(args.ratio_source_init) + '-' + str(args.ratio_source_final) + '-' +str(args.ratio_source_final_epoch)
+    args.id += '-alpha' + str(args.alpha)
+    args.id += '-beta' + str(args.beta)
     args.id += '-decay' + str(args.weight_decay)
     print('Model ID: {}'.format(args.id))
 
