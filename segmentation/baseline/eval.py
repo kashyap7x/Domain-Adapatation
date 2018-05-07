@@ -15,7 +15,27 @@ from dataset import CityScapes
 from models import ModelBuilder
 from utils import AverageMeter, colorEncode, accuracy, intersectionAndUnion
 
-
+trainID2Class = {
+    0: 'road',
+    1: 'sidewalk',
+    2: 'building',
+    3: 'wall',
+    4: 'fence',
+    5: 'pole',
+    6: 'traffic light',
+    7: 'traffic sign',
+    8: 'vegetation',
+    9: 'terrain',
+    10: 'sky',
+    11: 'person',
+    12: 'rider',
+    13: 'car',
+    14: 'truck',
+    15: 'bus',
+    16: 'train',
+    17: 'motorcycle',
+    18: 'bicycle'
+}
 # forward func for evaluation
 def forward_multiscale(nets, batch_data, args):
     (net_encoder, net_decoder, crit) = nets
@@ -37,12 +57,12 @@ def forward_multiscale(nets, batch_data, args):
                              volatile=True).cuda()
 
         # forward
-        pred_scale = net_decoder(net_encoder(input_img), segSize=segSize)
+        pred_scale = net_decoder(net_encoder(input_img))
 
         # average the probability
         pred = pred + pred_scale / len(args.scales)
 
-    pred = torch.log(pred)
+    # pred = torch.log(pred)
 
     label_seg = Variable(segs, volatile=True).cuda()
     err = crit(pred, label_seg)
@@ -109,7 +129,7 @@ def evaluate(nets, loader, args):
 
     iou = intersection_meter.sum / (union_meter.sum + 1e-10)
     for i, _iou in enumerate(iou):
-        print('class [{}], IoU: {}'.format(i, _iou))
+        print('class [{}], IoU: {}'.format(trainID2Class[i], _iou))
 
     print('[Eval Summary]:')
     print('Loss: {}, Mean IoU: {:.4}, Accurarcy: {:.2f}%'
@@ -124,14 +144,13 @@ def main(args):
                                         weights=args.weights_encoder)
     net_decoder = builder.build_decoder(arch=args.arch_decoder,
                                         fc_dim=args.fc_dim,
-                                        segSize=args.segSize,
                                         weights=args.weights_decoder,
-                                        use_softmax=True)
+                                        use_softmax=True, segSize=args.segSize)
 
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_val = CityScapes('test', max_sample=args.num_val, is_train=0)
+    dataset_val = CityScapes('val', root=args.root_cityscapes, max_sample=args.num_val, is_train=0)
     loader_val = torch.utils.data.DataLoader(
         dataset_val,
         batch_size=args.batch_size,
@@ -152,13 +171,14 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # Model related arguments
-    parser.add_argument('--id', required=True,
-                        help="a name for identifying the model to load")
+    # parser.add_argument('--id', required=True,
+    #                     help="a name for identifying the model to load")
+    parser.add_argument('--id', help="a name for identifying the model to load")
     parser.add_argument('--suffix', default='_best.pth',
                         help="which snapshot to load")
     parser.add_argument('--arch_encoder', default='resnet34_dilated8',
                         help="architecture of net_encoder")
-    parser.add_argument('--arch_decoder', default='c1_bilinear',
+    parser.add_argument('--arch_decoder', default='psp_bilinear',
                         help="architecture of net_decoder")
     parser.add_argument('--fc_dim', default=512, type=int,
                         help='number of features between encoder and decoder')
@@ -170,6 +190,8 @@ if __name__ == '__main__':
                         default='./data/ADEChallengeData2016/images')
     parser.add_argument('--root_seg',
                         default='./data/ADEChallengeData2016/annotations')
+    parser.add_argument('--root_cityscapes',
+                        default='/home/selfdriving/datasets/cityscapes_full')
 
     # Data related arguments
     parser.add_argument('--num_val', default=-1, type=int,
@@ -192,11 +214,14 @@ if __name__ == '__main__':
                         help='folder to output visualization results')
 
     args = parser.parse_args()
+
+    args.id = 'oracle-resnet34_dilated8-psp_bilinear-ngpus3-batchSize18-imgSize640-segSize640-lr_encoder0.001-lr_decoder0.01-epoch20-decay0.0001'
+
     print(args)
 
     # scales for evaluation
-    # args.scales = (1, )
-    args.scales = (0.5, 0.75, 1, 1.25, 1.5)
+    args.scales = (1, )
+    # args.scales = (0.5, 0.75, 1, 1.25, 1.5)
 
     # absolute paths of model weights
     args.weights_encoder = os.path.join(args.ckpt, args.id,

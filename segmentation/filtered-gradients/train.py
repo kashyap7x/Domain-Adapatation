@@ -420,13 +420,13 @@ if __name__ == '__main__':
                         help='input batch size')
     parser.add_argument('--batch_size_per_gpu_eval', default=3, type=int,
                         help='eval batch size')
-    parser.add_argument('--num_epoch', default=10, type=int,
+    parser.add_argument('--num_epoch', default=20, type=int,
                         help='epochs to train for')
-    parser.add_argument('--ratio_source_init', default=0.8, type=float,
+    parser.add_argument('--ratio_source_init', default=0.9, type=float,
                         help='initial sampling ratio for source domain')
-    parser.add_argument('--ratio_source_final', default=0.4, type=float,
+    parser.add_argument('--ratio_source_final', default=0.1, type=float,
                         help='final sampling ratio for source domain')
-    parser.add_argument('--ratio_source_final_epoch', default=5, type=int,
+    parser.add_argument('--ratio_source_final_epoch', default=10, type=int,
                         help='epoch beyond which to maintain final ratio')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')
