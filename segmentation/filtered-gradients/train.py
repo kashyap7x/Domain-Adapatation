@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from scipy.io import loadmat
 from scipy.misc import imresize, imsave
 # Our libs
-from dataset import GTA, CityScapes
+from dataset import GTA, CityScapes, BDD
 from models import ModelBuilder
 from utils import AverageMeter, colorEncode, accuracy, randomSampler, similiarityPenalty, make_variable
 
@@ -327,9 +327,9 @@ def main(args):
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_train = GTA(cropSize=args.imgSize, root=args.root_playing)
-    dataset_adapt =  CityScapes('train', root=args.root_cityscapes, cropSize=args.imgSize, is_train=1)
-    dataset_val = CityScapes('val', root=args.root_cityscapes, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
+    dataset_train = GTA(cropSize=args.imgSize, root=args.root_labeled)
+    dataset_adapt =  CityScapes('train', root=args.root_unlabeled, cropSize=args.imgSize, is_train=1)
+    dataset_val = CityScapes('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
         batch_size=args.batch_size,
@@ -408,9 +408,9 @@ if __name__ == '__main__':
                         help='number of features between encoder and decoder')
 
     # Path related arguments
-    parser.add_argument('--root_cityscapes',
+    parser.add_argument('--root_unlabeled',
                         default='/home/selfdriving/datasets/cityscapes_full')
-    parser.add_argument('--root_playing',
+    parser.add_argument('--root_labeled',
                         default='/home/selfdriving/datasets/GTA_full')
 
     # optimization related arguments
@@ -428,6 +428,12 @@ if __name__ == '__main__':
                         help='final sampling ratio for source domain')
     parser.add_argument('--ratio_source_final_epoch', default=10, type=int,
                         help='epoch beyond which to maintain final ratio')
+    parser.add_argument('--hard_filtering_init', default=0, type=float,
+                        help='initial probability to drop easy labels in source domain')
+    parser.add_argument('--hard_filtering_final', default=1, type=float,
+                        help='final probability to drop easy labels in source domain')
+    parser.add_argument('--hard_filtering_final_epoch', default=10, type=int,
+                        help='epoch beyond which to maintain final hard mining probability')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')
     parser.add_argument('--lr_decoder', default=1e-2, type=float, help='LR')

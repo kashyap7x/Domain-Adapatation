@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from scipy.io import loadmat
 from scipy.misc import imresize, imsave
 # Our libs
-from dataset import GTA, CityScapes
+from dataset import GTA, CityScapes, BDD
 from models import ModelBuilder
 from utils import AverageMeter, colorEncode, accuracy
 
@@ -249,9 +249,12 @@ def main(args):
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_train = GTA(cropSize=args.imgSize, root=args.root_playing)
-    #dataset_train =  CityScapes('train', root=args.root_cityscapes, cropSize=args.imgSize, is_train=1)
-    dataset_val = CityScapes('val', root=args.root_cityscapes, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
+    #dataset_train = GTA(cropSize=args.imgSize, root=args.root_labeled)
+    #dataset_train =  CityScapes('train', root=args.root_unlabeled, cropSize=args.imgSize, is_train=1)
+    dataset_train = BDD('train', root=args.root_labeled, cropSize=args.imgSize, is_train=1)
+    #dataset_val = CityScapes('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val, is_train=0)
+    dataset_val = BDD('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val,
+                             is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
         batch_size=args.batch_size,
@@ -318,10 +321,10 @@ if __name__ == '__main__':
                         help='number of features between encoder and decoder')
 
     # Path related arguments
-    parser.add_argument('--root_cityscapes',
-                        default='/home/selfdriving/datasets/cityscapes_full')
-    parser.add_argument('--root_playing',
-                        default='/home/selfdriving/datasets/GTA_full')
+    parser.add_argument('--root_unlabeled',
+                        default='/home/selfdriving/datasets/bdd100k')
+    parser.add_argument('--root_labeled',
+                        default='/home/selfdriving/datasets/bdd100k')
 
     # optimization related arguments
     parser.add_argument('--num_gpus', default=3, type=int,
