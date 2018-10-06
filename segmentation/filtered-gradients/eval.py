@@ -11,7 +11,7 @@ from scipy.io import loadmat
 from scipy.misc import imsave
 from scipy.ndimage import zoom
 # Our libs
-from dataset import CityScapes
+from dataset import CityScapes, BDD
 from models import ModelBuilder
 from utils import AverageMeter, colorEncode, accuracy, intersectionAndUnion
 
@@ -38,6 +38,7 @@ trainID2Class = {
 }
 
 
+
 # forward func for evaluation
 def forward_multiscale(nets, batch_data, args):
     (net_encoder, net_decoder_1, net_decoder_2, net_syn, crit) = nets
@@ -56,7 +57,7 @@ def forward_multiscale(nets, batch_data, args):
 
         # feed input data
         input_img = Variable(torch.from_numpy(imgs_scale),
-                             volatile=True).cuda()
+                             volatile=True, requires_grad = False).cuda()
 
         # forward
         pred_featuremap_1 = net_decoder_1(net_encoder(input_img))
@@ -112,9 +113,12 @@ def evaluate(nets, loader, args):
     # switch to eval mode
     for net in nets:
         net.eval()
+        for param in net.parameters():
+            param.requires_grad = False
 
     for i, batch_data in enumerate(loader):
         # forward pass
+
         pred, err = forward_multiscale(nets, batch_data, args)
         loss_meter.update(err.data[0])
         # calculate accuracy
@@ -160,7 +164,9 @@ def main(args):
     crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_val = CityScapes('val', root=args.root_cityscapes, max_sample=args.num_val, is_train=0)
+    # dataset_val = CityScapes('val', root=args.root_cityscapes, max_sample=args.num_val, is_train=0)
+    dataset_val = BDD('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val,
+                      is_train=0)
     loader_val = torch.utils.data.DataLoader(
         dataset_val,
         batch_size=args.batch_size,
@@ -184,7 +190,7 @@ if __name__ == '__main__':
     # parser.add_argument('--id', required=True,
     #                     help="a name for identifying the model to load")
     parser.add_argument('--id', help="a name for identifying the model to load")
-    parser.add_argument('--suffix', default='_best.pth',
+    parser.add_argument('--suffix', default='_best_mIoU.pth',
                         help="which snapshot to load")
     parser.add_argument('--arch_encoder', default='resnet34_dilated8',
                         help="architecture of net_encoder")
@@ -202,6 +208,11 @@ if __name__ == '__main__':
                         default='./data/ADEChallengeData2016/annotations')
     parser.add_argument('--root_cityscapes',
                         default='/home/selfdriving/datasets/cityscapes_full')
+    #temporary change here
+    # parser.add_argument('--root_cityscapes',
+    #                     default='/home/jwfeng/database/cityscapes_full')
+    parser.add_argument('--root_unlabeled',
+                        default='/home/selfdriving/datasets/bdd100k')
     parser.add_argument('--root_playing',
                         default='/home/selfdriving/datasets/GTA_full')
 
@@ -210,7 +221,7 @@ if __name__ == '__main__':
                         help='number of images to evalutate')
     parser.add_argument('--num_class', default=19, type=int,
                         help='number of classes')
-    parser.add_argument('--batch_size', default=1, type=int,
+    parser.add_argument('--batch_size', default=4, type=int,
                         help='batchsize')
     parser.add_argument('--imgSize', default=-1, type=int,
                         help='input image size, -1 = keep original')
@@ -218,7 +229,7 @@ if __name__ == '__main__':
                         help='output image size, -1 = keep original')
 
     # Misc arguments
-    parser.add_argument('--ckpt', default='./ckpt',
+    parser.add_argument('--ckpt', default='./gta2bdd_ckpt',
                         help='folder to output checkpoints')
     parser.add_argument('--visualize', default=0,
                         help='output visualization?')
@@ -227,7 +238,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    args.id = 'adapt-resnet34_dilated8-psp_bilinear-ngpus3-batchSize12-imgSize600-lr_encoder0.001-lr_decoder0.01-epoch10-ratio0.8-0.4-5-alpha0.01-beta1-decay0.0001'
+    args.id = 'adapt-resnet34_dilated8-psp_bilinear-ngpus3-batchSize12-imgSize600-lr_encoder0.001-lr_decoder0.01-epoch20-alpha0.01-beta1-decay0.0001-target'
 
     print(args)
 

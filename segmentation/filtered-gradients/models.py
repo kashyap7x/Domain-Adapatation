@@ -75,8 +75,12 @@ class ModelBuilder():
             net_decoder.load_state_dict(pretrained_dict, strict=False)
         return net_decoder
 
-    def build_syn(self, num_class=19, use_softmax=False):
+    def build_syn(self, num_class=19, use_softmax=False, weights=''):
         net_syn = SynModel(num_class=num_class, use_softmax=use_softmax)
+        if len(weights) > 0:
+            print('Loading weights for net_syn')
+            pretrained_dict = torch.load(weights, map_location=lambda storage, loc: storage)
+            net_syn.load_state_dict(pretrained_dict, strict=False)
         return net_syn
 
 

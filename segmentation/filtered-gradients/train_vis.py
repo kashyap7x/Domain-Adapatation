@@ -24,9 +24,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-# todo: change to gta 2 bdd
-
-
 trainID2Class = {
     0: 'road',
     1: 'sidewalk',
@@ -50,6 +47,38 @@ trainID2Class = {
 }
 
 
+# class_pix_num = [3442701605,
+# 766224830,
+# 1425944642,
+# 191889280,
+# 63765345,
+# 107254024,
+# 11730588,
+# 8095220,
+# 712298409,
+# 211524835,
+# 781451152,
+# 48852622,
+# 4720916,
+# 351499336,
+# 130050703,
+# 39334983,
+# 6851810,
+# 3908150,
+# 766455]
+#
+# tmp = np.array(class_pix_num).astype(np.float)
+# n = float(np.sum(tmp))
+# rev_sum = np.sum(1 / tmp)
+# scale = 19 / rev_sum
+# # class_weight is sum to 19, to avoid unbalance loss
+# class_weight = scale / tmp
+# class_weight = torch.from_numpy(class_weight.astype(np.float32))
+# class_weight = np.ones([19], dtype=np.float32)
+# enhance_class = [1, 3, 4, 5, 6, 7, 12]
+# class_weight[enhance_class] = 5
+# class_weight = torch.from_numpy(class_weight.astype(np.float32))
+
 def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False, epoch=0):
     (net_encoder, net_decoder_1, net_decoder_2, net_syn, crit) = nets
     (imgs, segs, infos) = batch_data
@@ -69,55 +98,6 @@ def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False, epo
     weights2 = net_decoder_2.module.get_weights()
 
     if is_adapt:
-        if args.source_only:
-            # do nothing
-            err_1 = 0
-            err_2 = 0
-            err_syn = 0
-        else:
-            if not args.easy_mining:
-                _, pred_1 = torch.max(pred_featuremap_1, 1)
-                _, pred_2 = torch.max(pred_featuremap_2, 1)
-                _, pred_syn = torch.max(pred_featuremap_syn, 1)
-
-
-                err_1 = crit(pred_featuremap_1, pred_syn)
-                err_2 = crit(pred_featuremap_2, pred_syn)
-                err_syn = 0
-            else:
-
-                _, pred_1 = torch.max(pred_featuremap_1, 1)
-                _, pred_2 = torch.max(pred_featuremap_2, 1)
-                _, pred_syn = torch.max(pred_featuremap_syn, 1)
-
-                # reshape the feature map as class_num * (batch_size * h * w)
-                pred_1 = pred_1.view(1, -1)
-                pred_2 = pred_2.view(1, -1)
-                pred_syn = pred_syn.view(1, -1)
-
-                adapt_idx = (torch.eq(pred_1, pred_2)).squeeze()
-
-                # all the rest are ignored indexes
-                ignored_idx = (adapt_idx == 0).nonzero().squeeze()
-
-
-
-                if len(ignored_idx.size()) > 0:
-                    pred_syn[..., ignored_idx] = -1
-
-                # reshape back to use NLLLoss2d
-                pred_syn = pred_syn.view(pred_featuremap_syn.size(0), pred_featuremap_syn.size(2), pred_featuremap_syn.size(3))
-
-                if len(adapt_idx.size()) > 0:
-                    err_1 = crit(pred_featuremap_1, pred_syn)
-                    err_2 = crit(pred_featuremap_2, pred_syn)
-                    # err_syn = crit(pred_featuremap_syn, pred_syn)
-                    err_syn = 0
-                else:
-                    err_1 = 0
-                    err_2 = 0
-                    err_syn = 0
-    else:
         _, pred_1 = torch.max(pred_featuremap_1, 1)
         _, pred_2 = torch.max(pred_featuremap_2, 1)
         _, pred_syn = torch.max(pred_featuremap_syn, 1)
@@ -127,12 +107,14 @@ def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False, epo
         pred_2 = pred_2.view(1, -1)
         pred_syn = pred_syn.view(1, -1)
 
-        label_seg = label_seg.view(1, -1)
-
         adapt_idx = (torch.eq(pred_1, pred_2)).squeeze()
+
+        # all the rest are ignored indexes
+        ignored_idx = (adapt_idx == 0).nonzero().squeeze()
+
         agreed_idx = (adapt_idx == 1).nonzero().squeeze()
 
-        if not args.source_only and args.hard_prob_modifier_handle is not None:
+        if args.hard_prob_modifier_handle is not None:
             hard_prob = args.hard_prob_modifier_handle(epoch, args.hard_filtering_final_epoch)
 
             drop_num = int(agreed_idx.size(0) * hard_prob)
@@ -143,9 +125,25 @@ def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False, epo
                 shuffle_idx = Variable(shuffle_idx.cuda(agreed_idx.get_device()))
                 agreed_idx = agreed_idx[shuffle_idx]
                 agreed_drop_idx = agreed_idx[0:drop_num]
-                label_seg[..., agreed_drop_idx] = -1
+                pred_syn[..., agreed_drop_idx] = -1
 
-        label_seg = label_seg.view(pred_featuremap_syn.size(0), pred_featuremap_syn.size(2), pred_featuremap_syn.size(3))
+        if len(ignored_idx.size()) > 0:
+            pred_syn[..., ignored_idx] = -1
+
+        # reshape back to use NLLLoss2d
+        # TODO: not sure whether this view can reproduce the same one
+        pred_syn = pred_syn.view(pred_featuremap_syn.size(0), pred_featuremap_syn.size(2), pred_featuremap_syn.size(3))
+
+        if len(adapt_idx.size()) > 0:
+            err_1 = crit(pred_featuremap_1, pred_syn)
+            err_2 = crit(pred_featuremap_2, pred_syn)
+            # err_syn = crit(pred_featuremap_syn, pred_syn)
+            err_syn = 0
+        else:
+            err_1 = 0
+            err_2 = 0
+            err_syn = 0
+    else:
         err_1 = crit(pred_featuremap_1, label_seg)
         err_2 = crit(pred_featuremap_2, label_seg)
         err_syn = crit(pred_featuremap_syn, label_seg)
@@ -155,6 +153,89 @@ def forward_with_loss(nets, batch_data, args, is_train=True, is_adapt=False, epo
     err = err_1 + err_2 + args.alpha * err_sim + args.beta * err_syn
 
     return pred_featuremap_syn, err
+
+def forward_with_loss_agreemap(nets, batch_data, args, is_train=True, is_adapt=False, epoch=0):
+    (net_encoder, net_decoder_1, net_decoder_2, net_syn, crit) = nets
+    (imgs, segs, infos) = batch_data
+
+    # feed input data
+    input_img = Variable(imgs, volatile=not is_train)
+    label_seg = Variable(segs, volatile=not is_train)
+    input_img = input_img.cuda()
+    label_seg = label_seg.cuda()
+
+    # forward
+    pred_featuremap_1 = net_decoder_1(net_encoder(input_img))
+    pred_featuremap_2 = net_decoder_2(net_encoder(input_img))
+    pred_featuremap_syn = net_syn(pred_featuremap_1, pred_featuremap_2)
+
+    weights1 = net_decoder_1.module.get_weights()
+    weights2 = net_decoder_2.module.get_weights()
+
+    if is_adapt:
+        _, pred_1 = torch.max(pred_featuremap_1, 1)
+        _, pred_2 = torch.max(pred_featuremap_2, 1)
+        _, pred_syn = torch.max(pred_featuremap_syn, 1)
+
+        # reshape the feature map as class_num * (batch_size * h * w)
+        pred_1 = pred_1.view(1, -1)
+        pred_2 = pred_2.view(1, -1)
+        pred_syn = pred_syn.view(1, -1)
+
+        adapt_idx = (torch.eq(pred_1, pred_2)).squeeze()
+
+        # all the rest are ignored indexes
+        ignored_idx = (adapt_idx == 0).nonzero().squeeze()
+
+        agreed_idx = (adapt_idx == 1).nonzero().squeeze()
+
+        if args.hard_prob_modifier_handle is not None:
+            hard_prob = args.hard_prob_modifier_handle(epoch, args.hard_filtering_final_epoch)
+
+            drop_num = int(agreed_idx.size(0) * hard_prob)
+
+            if drop_num > 0:
+                # randomly shuffle agreed_idx
+                shuffle_idx = torch.randperm(agreed_idx.size(0))
+                shuffle_idx = Variable(shuffle_idx.cuda(agreed_idx.get_device()))
+                agreed_idx = agreed_idx[shuffle_idx]
+                agreed_drop_idx = agreed_idx[0:drop_num]
+                pred_syn[..., agreed_drop_idx] = -1
+
+        if len(ignored_idx.size()) > 0:
+            pred_syn[..., ignored_idx] = -1
+
+        # reshape back to use NLLLoss2d
+        # TODO: not sure whether this view can reproduce the same one
+        pred_syn = pred_syn.view(pred_featuremap_syn.size(0), pred_featuremap_syn.size(2), pred_featuremap_syn.size(3))
+
+        if len(adapt_idx.size()) > 0:
+            err_1 = crit(pred_featuremap_1, pred_syn)
+            err_2 = crit(pred_featuremap_2, pred_syn)
+            # err_syn = crit(pred_featuremap_syn, pred_syn)
+            err_syn = 0
+        else:
+            err_1 = 0
+            err_2 = 0
+            err_syn = 0
+    else:
+
+        err_1 = crit(pred_featuremap_1, label_seg)
+        err_2 = crit(pred_featuremap_2, label_seg)
+        err_syn = crit(pred_featuremap_syn, label_seg)
+
+    _, pred_1 = torch.max(pred_featuremap_1, 1)
+    _, pred_2 = torch.max(pred_featuremap_2, 1)
+    agree_map = torch.eq(pred_1, pred_2)
+    agree_map = agree_map.data.cpu().numpy()
+    print('agree number is {}'.format(np.sum(agree_map)))
+    # print(np.sum(agree_map))
+
+    err_sim = similiarityPenalty(weights1.squeeze(), weights2.squeeze())
+
+    err = err_1 + err_2 + args.alpha * err_sim + args.beta * err_syn
+
+    return pred_featuremap_syn, err, agree_map
 
 
 def visualize(batch_data, pred, args):
@@ -184,6 +265,42 @@ def visualize(batch_data, pred, args):
         imsave(os.path.join(args.vis,
                             infos[j].replace('/', '_')), im_vis)
 
+def visualize_2(batch_data, pred, agreemap, epoch, args):
+    colors = loadmat('../colormap.mat')['colors']
+    (imgs, segs, infos) = batch_data
+    for j in range(len(infos)):
+        # get/recover image
+        # img = imread(os.path.join(args.root_img, infos[j]))
+        img = imgs[j].clone()
+        for t, m, s in zip(img,
+                           [0.485, 0.456, 0.406],
+                           [0.229, 0.224, 0.225]):
+            t.mul_(s).add_(m)
+        img = (img.numpy().transpose((1, 2, 0)) * 255).astype(np.uint8)
+
+        # segmentation
+        lab = segs[j].numpy()
+        lab_color = colorEncode(lab, colors)
+
+        # prediction
+        pred_ = np.argmax(pred.data.cpu()[j].numpy(), axis=0)
+        pred_color = colorEncode(pred_, colors)
+
+        imgname = infos[j].split('/')[-1]
+        imgname = imgname.split('.')[0]
+
+        agreemap_single = agreemap[j,...] *255
+
+        # aggregate images and save
+        # im_vis = np.concatenate((img, lab_color, pred_color),
+        #                         axis=1).astype(np.uint8)
+        if not os.path.isfile(os.path.join(args.vis, imgname + '_' +  '_raw' + '.png')):
+            # only save once
+            imsave(os.path.join(args.vis, imgname + '_' +  '_raw' + '.png'), img.astype(np.uint8))
+        imsave(os.path.join(args.vis, imgname + '_' + str(epoch) +  '_gt' + '.png'), lab_color.astype(np.uint8))
+        imsave(os.path.join(args.vis, imgname + '_' + str(epoch) +  '_pred' + '.png'), pred_color.astype(np.uint8))
+        imsave(os.path.join(args.vis, imgname + '_' + str(epoch) +  '_agree' + '.png'), agreemap_single.astype(np.uint8))
+
 
 # train one epoch
 def train(nets, loader, loader_adapt, optimizers, history, epoch, args):
@@ -203,7 +320,6 @@ def train(nets, loader, loader_adapt, optimizers, history, epoch, args):
     for i in range(args.epoch_iters):
         batch_data, is_adapt = randomSampler(args.ratio_source_init, args.ratio_source_final, \
                                              args.ratio_source_final_epoch, epoch, loader, loader_adapt)
-
         data_time.update(time.time() - tic)
         for net in nets:
             net.zero_grad()
@@ -258,7 +374,7 @@ def evaluate(nets, loader, history, epoch, args):
     for i, batch_data in enumerate(loader):
         # forward pass
         torch.cuda.empty_cache()
-        pred, err = forward_with_loss(nets, batch_data, args, is_train=False)
+        pred, err, agreemap = forward_with_loss_agreemap(nets, batch_data, args, is_train=False)
         loss_meter.update(err.data[0])
         print('[Eval] iter {}, loss: {}'.format(i, err.data[0]))
 
@@ -272,7 +388,7 @@ def evaluate(nets, loader, history, epoch, args):
         union_meter.update(union)
 
         # visualization
-        visualize(batch_data, pred, args)
+        visualize_2(batch_data, pred, agreemap, epoch, args)
 
     iou = intersection_meter.sum / (union_meter.sum + 1e-10)
     for i, _iou in enumerate(iou):
@@ -456,9 +572,9 @@ def main(args):
         crit = nn.NLLLoss2d(ignore_index=-1)
 
     # Dataset and Loader
-    dataset_train = CityScapes('train', root=args.root_labeled, cropSize=args.imgSize, is_train=1)
-    dataset_adapt = BDD('train', root=args.root_unlabeled, cropSize=args.imgSize, is_train=1)
-    dataset_val = BDD('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val,
+    dataset_train = GTA(cropSize=args.imgSize, root=args.root_labeled)
+    dataset_adapt = CityScapes('train', root=args.root_unlabeled, cropSize=args.imgSize, is_train=1)
+    dataset_val = CityScapes('val', root=args.root_unlabeled, cropSize=args.imgSize, max_sample=args.num_val,
                              is_train=0)
     loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -541,18 +657,18 @@ if __name__ == '__main__':
 
     # Path related arguments
     parser.add_argument('--root_unlabeled',
-                        default='/home/selfdriving/datasets/bdd100k')
-    parser.add_argument('--root_labeled',
                         default='/home/selfdriving/datasets/cityscapes_full')
+    parser.add_argument('--root_labeled',
+                        default='/home/selfdriving/datasets/GTA_full')
 
     # optimization related arguments
     parser.add_argument('--num_gpus', default=3, type=int,
                         help='number of gpus to use')
-    parser.add_argument('--batch_size_per_gpu', default=2, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=4, type=int,
                         help='input batch size')
-    parser.add_argument('--batch_size_per_gpu_eval', default=1, type=int,
+    parser.add_argument('--batch_size_per_gpu_eval', default=3, type=int,
                         help='eval batch size')
-    parser.add_argument('--num_epoch', default=20, type=int,
+    parser.add_argument('--num_epoch', default=10, type=int,
                         help='epochs to train for')
     parser.add_argument('--ratio_source_init', default=0.9, type=float,
                         help='initial sampling ratio for source domain')
@@ -560,7 +676,12 @@ if __name__ == '__main__':
                         help='final sampling ratio for source domain')
     parser.add_argument('--ratio_source_final_epoch', default=10, type=int,
                         help='epoch beyond which to maintain final ratio')
-
+    parser.add_argument('--hard_filtering_init', default=0, type=float,
+                        help='initial probability to drop easy labels in source domain')
+    parser.add_argument('--hard_filtering_final', default=1, type=float,
+                        help='final probability to drop easy labels in source domain')
+    parser.add_argument('--hard_filtering_final_epoch', default=10, type=int,
+                        help='epoch beyond which to maintain final hard mining probability')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=1e-3, type=float, help='LR')
     parser.add_argument('--lr_decoder', default=1e-2, type=float, help='LR')
@@ -591,20 +712,22 @@ if __name__ == '__main__':
 
     # Misc arguments
     parser.add_argument('--seed', default=1337, type=int, help='manual seed')
-    parser.add_argument('--ckpt', default='./city2bdd_ckpt',
+    parser.add_argument('--ckpt', default='./tmp/ckpt',
                         help='folder to output checkpoints')
-    parser.add_argument('--vis', default='./vis',
+    parser.add_argument('--vis', default='./tmp/vis',
                         help='folder to output visualization during training')
     parser.add_argument('--disp_iter', type=int, default=20,
                         help='frequency to display')
     parser.add_argument('--eval_epoch', type=int, default=1,
                         help='frequency to evaluate')
 
-    # Mode select
-    parser.add_argument('--source_only', default=False, type=bool, help='set True to do source only training')
-    parser.add_argument('--easy_mining', default=True, type=bool, help='set True to do easy mining')
-    parser.add_argument('--hard_mining', default=True, type=bool, help='set True to do hard mining')
+    # hardmining modifier
+    parser.add_argument('--hard_prob_modifier', default='linear', type=str,
+                        help='set linear to use linear hard mining probability modifier')
+
+    # class weights
     parser.add_argument('--weighted_class', default=True, type=bool, help='set True to use weighted class')
+    parser.add_argument('--enhanced_weight', default=2, type=float, help='apply greater weight to some classes')
 
     args = parser.parse_args()
     print("Input arguments:")
@@ -612,29 +735,17 @@ if __name__ == '__main__':
         print("{:16} {}".format(key, val))
 
     args.batch_size = args.num_gpus * args.batch_size_per_gpu
-    args.batch_size_eval = args.batch_size_per_gpu_eval
+    args.batch_size_eval = args.num_gpus * args.batch_size_per_gpu_eval
 
-    # Specify certain arguments
-    if not args.source_only:
-        if args.hard_mining:
-            args.hard_filtering_init = 0
-            args.hard_filtering_final = 1
-            args.hard_filtering_final_epoch = 10
-            # assign actual function handle
-            args.hard_prob_modifier_handle = hardmining.linearModifier
-        else:
-            args.hard_prob_modifier_handle = None
+    # if args.num_val < args.batch_size:
+    #     args.num_val = args.batch_size
 
-
-    if args.weighted_class:
-        args.enhanced_weight = 2.0
-        args.class_weight = np.ones([19], dtype=np.float32)
-        enhance_class = [1, 3, 4, 5, 6, 7, 12]
-        args.class_weight[enhance_class] = args.enhanced_weight
-        args.class_weight = torch.from_numpy(args.class_weight.astype(np.float32))
-
-
-
+    # assign actual function handle to the parser
+    args.hard_prob_modifier = 'None'
+    if args.hard_prob_modifier == 'linear':
+        args.hard_prob_modifier_handle = hardmining.linearModifier
+    else:
+        args.hard_prob_modifier_handle = None
 
     args.id += '-' + str(args.arch_encoder)
     args.id += '-' + str(args.arch_decoder)
@@ -649,18 +760,10 @@ if __name__ == '__main__':
     args.id += '-alpha' + str(args.alpha)
     args.id += '-beta' + str(args.beta)
     args.id += '-decay' + str(args.weight_decay)
-    if args.weighted_class:
-        args.id += '-weighted' + str(args.enhanced_weight)
-    if args.source_only:
-        args.id += '-source_only'
-    else:
-        args.id += '-adapt'
-        if args.easy_mining:
-            args.id += '-easy_mining'
-        if args.hard_mining:
-            args.id += '-hard_mining'
-
-
+    args.id += '-modifier' + args.hard_prob_modifier
+    args.id += '-weighted' + str(args.enhanced_weight)
+    # temporary
+    # args.id += '-2'
     print('Model ID: {}'.format(args.id))
 
     args.ckpt = os.path.join(args.ckpt, args.id)
@@ -674,7 +777,10 @@ if __name__ == '__main__':
     args.best_acc = 0
     args.best_mIoU = 0
 
-
+    args.class_weight = np.ones([19], dtype=np.float32)
+    enhance_class = [1, 3, 4, 5, 6, 7, 12]
+    args.class_weight[enhance_class] = args.enhanced_weight
+    args.class_weight = torch.from_numpy(args.class_weight.astype(np.float32))
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
